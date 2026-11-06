@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: WordPress Table-of-Contents Shortcode Done Properly
+ * Plugin Name: WP TOC
  * Plugin URI:  https://github.com/menj/wp-toc
  * Description: A lightweight, server-side Table of Contents generator using DOMDocument (libxml). Adds IDs to headings automatically and renders a nested list via the [auto_toc] shortcode.
  * Version:     1.0.0
@@ -8,7 +8,7 @@
  * Author URI:  https://menj.blog
  * License:     MIT
  * License URI: https://github.com/menj/wp-toc/blob/main/LICENSE
- * Text Domain: wp-auto-toc
+ * Text Domain: wp-toc
  *
  * Based on original work by Ikram Hawramani (https://hawramani.com).
  */
