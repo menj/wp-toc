@@ -1,4 +1,4 @@
-# WordPress Table-of-Contents Shortcode Done Properly
+# WP TOC (wp-toc)
 
 A shortcode for automatically adding a table of contents to a post. No plugin installation (just copy and paste the code below). Intelligent article processing using the native HTML parser (libxml), not messy programmatic find-and-replace operations.
 
@@ -19,9 +19,9 @@ This solution uses PHP's native `DOMDocument` (libxml) to parse post content, au
 2.  Paste the PHP code found below in the section "The Code (For Copy and Paste Into functions.php)".
 
 ### Option 2: Custom Plugin
-1.  Create a folder in `wp-content/plugins/` named `wp-auto-toc`.
-2.  Create a file inside it named `wp-auto-toc.php`.
-3.  Paste the PHP code in [wp-auto-toc.php](wp-auto-toc.php) into that file.
+1.  Create a folder in `wp-content/plugins/` named `wp-toc`.
+2.  Create a file inside it named `wp-toc.php`.
+3.  Paste the PHP code in [wp-toc.php](wp-toc.php) into that file.
 4.  Activate via the WP Admin dashboard.
 
 ## Usage
