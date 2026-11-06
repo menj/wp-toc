@@ -1,18 +1,16 @@
 <?php
 /**
  * Plugin Name: WordPress Table-of-Contents Shortcode Done Properly
- * Plugin URI:  https://github.com/Hawramani/WordPress-Table-of-Contents-Shortcode-Done-Properly
- * Description: A lightweight, server-side Table of Contents generator using DOMDocument (libxml). Adds IDs to headings automatically and renders a nested list via the [auto_toc] shortcode.
- * Version: 1.0.0
- * Author: Ikram Hawramani (hawramani.com)
- * License: MIT
- * Text Domain: wp-auto-toc
+ * Plugin URI:  https://github.com/menj/wp-toc
  * Description: A lightweight, server-side Table of Contents generator using DOMDocument (libxml). Adds IDs to headings automatically and renders a nested list via the [auto_toc] shortcode.
  * Version:     1.0.0
- * Author:      Ikram Hawramani
- * Author URI:  https://hawramani.com
+ * Author:      Mohd Elfie Nieshaem Juferi
+ * Author URI:  https://menj.blog
  * License:     MIT
+ * License URI: https://github.com/menj/wp-toc/blob/main/LICENSE
  * Text Domain: wp-auto-toc
+ *
+ * Based on original work by Ikram Hawramani (https://hawramani.com).
  */
 
 if (!defined('ABSPATH')) {

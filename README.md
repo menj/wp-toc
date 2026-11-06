@@ -226,11 +226,18 @@ Add this to your theme's `style.css`:
 }
 ```
 
+## Credits
+
+Developed and maintained by [Mohd Elfie Nieshaem Juferi](https://github.com/menj) — [github.com/menj/wp-toc](https://github.com/menj/wp-toc).
+
+Based on original work by Ikram Hawramani.
+
 ## License
 
 MIT License
 
 Copyright (c) 2025 Ikram Hawramani
+Copyright (c) 2026 Mohd Elfie Nieshaem Juferi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
