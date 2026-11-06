@@ -234,7 +234,7 @@ Based on original work by Ikram Hawramani.
 
 ## License
 
-WP TOC is free software, licensed under the [GNU General Public License v2 or later](https://www.gnu.org/licenses/gpl-2.0.html) (GPL-2.0-or-later). See [LICENSE](LICENSE).
+WP TOC is free software, licensed under the [GNU General Public License v3 or later](https://www.gnu.org/licenses/gpl-3.0.html) (GPL-3.0-or-later). See [LICENSE](LICENSE).
 
 Copyright (C) 2026 MENJ
 
