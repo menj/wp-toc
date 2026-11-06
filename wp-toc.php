@@ -6,11 +6,24 @@
  * Version:     1.0.0
  * Author:      MENJ
  * Author URI:  https://menj.blog
- * License:     MIT
- * License URI: https://github.com/menj/wp-toc/blob/main/LICENSE
+ * License:     GPL-2.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: wp-toc
  *
- * Based on original work by Ikram Hawramani (https://hawramani.com).
+ * Copyright (C) 2026 MENJ
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * Based on original work by Ikram Hawramani (https://hawramani.com),
+ * released under the MIT License; see LICENSE-MIT-ORIGINAL.
  */
 
 if (!defined('ABSPATH')) {
