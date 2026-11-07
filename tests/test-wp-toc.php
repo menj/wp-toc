@@ -46,7 +46,7 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 
 	public function test_no_stray_closing_li_before_first_item() {
 		$out = $this->render( '[wp_toc]<h2>A</h2><h2>B</h2>' );
-		$this->assertStringContainsString( '<ul class="wp-toc-list auto-toc-list"><li><a href="#a">A</a></li><li>', $out );
+		$this->assertStringContainsString( '<ul class="wp-toc-list auto-toc-list"><li itemprop="hasPart" itemscope itemtype="https://schema.org/WebPageElement" itemid="https://example.com/post-42/#a"><a href="#a" itemprop="url"><span itemprop="name">A</span></a></li><li itemprop="hasPart" itemscope itemtype="https://schema.org/WebPageElement" itemid="https://example.com/post-42/#b">', $out );
 	}
 
 	public function test_ending_on_a_deeper_level_closes_everything() {
@@ -129,16 +129,16 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 
 	public function test_heading_text_whitespace_and_inline_markup() {
 		$out = $this->render( "[wp_toc]<h2>\n  Hello   <em>big</em>\n\t<a href='#'>world</a>  </h2>" );
-		$this->assertStringContainsString( '<a href="#hello-big-world">Hello big world</a>', $out );
+		$this->assertStringContainsString( '<a href="#hello-big-world" itemprop="url"><span itemprop="name">Hello big world</span></a>', $out );
 	}
 
 	public function test_utf8_and_non_latin_headings() {
 		$out = $this->render( '[wp_toc]<h2>Café &amp; Crème</h2><h2>مرحبا بالعالم</h2>' );
 		$this->assertStringContainsString( '<h2 id="cafe-creme">', $out );
-		$this->assertStringContainsString( '>Café &amp; Crème</a>', $out );
-		$this->assertStringContainsString( '>مرحبا بالعالم</a>', $out );
+		$this->assertStringContainsString( '>Café &amp; Crème</span></a>', $out );
+		$this->assertStringContainsString( '>مرحبا بالعالم</span></a>', $out );
 		$this->assertStringContainsString( '<h2 id="مرحبا-بالعالم">مرحبا بالعالم</h2>', $out, 'Non-Latin ids are readable, not percent-encoded' );
-		$this->assertStringContainsString( '<a href="#مرحبا-بالعالم">', $out );
+		$this->assertStringContainsString( '<a href="#مرحبا-بالعالم" itemprop="url">', $out );
 	}
 
 	public function test_headings_inside_template_are_ignored() {
@@ -149,7 +149,7 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 
 	public function test_heading_text_is_escaped_in_toc() {
 		$out = $this->render( '[wp_toc]<h2>&lt;img src=x onerror=alert(1)&gt;</h2>' );
-		$this->assertStringContainsString( '>&lt;img src=x onerror=alert(1)&gt;</a>', $out );
+		$this->assertStringContainsString( '>&lt;img src=x onerror=alert(1)&gt;</span></a>', $out );
 		$this->assertStringNotContainsString( '<img src=x', $out );
 	}
 
@@ -232,7 +232,7 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 
 	public function test_collapsible() {
 		$out = $this->render( '[wp_toc collapsible="true"]<h2>A</h2>' );
-		$this->assertStringContainsString( '<details class="wp-toc-details" open><summary class="wp-toc-summary"><span class="wp-toc-title auto-toc-title" id="wp-toc-title-1">Table of Contents</span></summary>', $out );
+		$this->assertStringContainsString( '<details class="wp-toc-details" open><summary class="wp-toc-summary"><span class="wp-toc-title auto-toc-title" id="wp-toc-title-1" itemprop="name">Table of Contents</span></summary>', $out );
 		$this->assertStringContainsString( 'wp-toc--collapsible', $out );
 		$this->assertSame( array( 'A' => array() ), $this->toc_structure( $out ) );
 
@@ -302,14 +302,15 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 
 	public function test_nav_landmark_is_labelled_by_title() {
 		$out = $this->render( '[wp_toc]<h2>A</h2>' );
-		$this->assertStringContainsString( '<nav class="wp-toc auto-toc-container" aria-labelledby="wp-toc-title-1">', $out );
+		$this->assertStringContainsString( '<nav class="wp-toc auto-toc-container" aria-labelledby="wp-toc-title-1" itemscope itemtype="https://schema.org/SiteNavigationElement" itemid="https://example.com/post-42/#wp-toc-1">', $out );
 		$this->assertStringContainsString( 'id="wp-toc-title-1"', $out );
 	}
 
 	public function test_nav_without_title_uses_aria_label() {
 		$out = $this->render( '[wp_toc title=""]<h2>A</h2>' );
-		$this->assertStringContainsString( '<nav class="wp-toc auto-toc-container" aria-label="Table of Contents">', $out );
+		$this->assertStringContainsString( '<nav class="wp-toc auto-toc-container" aria-label="Table of Contents" itemscope itemtype="https://schema.org/SiteNavigationElement" itemid="https://example.com/post-42/#wp-toc-1">', $out );
 		$this->assertStringNotContainsString( 'wp-toc-title', $out );
+		$this->assertStringContainsString( '<meta itemprop="name" content="Table of Contents">', $out, 'Name for schema.org without a visible title' );
 	}
 
 	public function test_multiple_tocs_get_unique_title_ids_and_one_schema_block() {
@@ -332,13 +333,20 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 	}
 
 	public function test_style_only_enqueued_early_on_posts_using_shortcode() {
-		$GLOBALS['wp_toc_test']['singular'] = true;
-		$GLOBALS['wp_toc_test']['post']     = (object) array( 'post_content' => '<h2>A</h2>' );
+		$GLOBALS['wp_toc_test']['singular']        = true;
+		$GLOBALS['wp_toc_test']['post_types'][ 9 ] = 'attachment'; // No automatic TOC for this type.
+		$GLOBALS['wp_toc_test']['post']            = (object) array(
+			'ID'           => 9,
+			'post_content' => '<h2>A</h2>',
+		);
 		WP_TOC::register_assets();
 		$this->assertTrue( wp_style_is( 'wp-toc', 'registered' ) );
 		$this->assertFalse( wp_style_is( 'wp-toc' ) );
 
-		$GLOBALS['wp_toc_test']['post'] = (object) array( 'post_content' => '[auto_toc]<h2>A</h2>' );
+		$GLOBALS['wp_toc_test']['post'] = (object) array(
+			'ID'           => 9,
+			'post_content' => '[auto_toc]<h2>A</h2>',
+		);
 		WP_TOC::register_assets();
 		$this->assertTrue( wp_style_is( 'wp-toc' ) );
 	}
@@ -361,11 +369,13 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 				'hasPart'  => array(
 					array(
 						'@type'   => 'WebPageElement',
+						'@id'     => 'https://example.com/post-7/#a',
 						'name'    => 'A',
 						'url'     => 'https://example.com/post-7/#a',
 						'hasPart' => array(
 							array(
 								'@type' => 'WebPageElement',
+								'@id'   => 'https://example.com/post-7/#b',
 								'name'  => 'B',
 								'url'   => 'https://example.com/post-7/#b',
 							),
@@ -373,6 +383,7 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 					),
 					array(
 						'@type' => 'WebPageElement',
+						'@id'   => 'https://example.com/post-7/#c',
 						'name'  => 'C',
 						'url'   => 'https://example.com/post-7/#c',
 					),
@@ -398,11 +409,57 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 		$this->assertSame( 'https://example.com/post-42/#50%25off', $parts[1]['url'], 'A literal % is encoded so the fragment decodes back to the id' );
 	}
 
-	public function test_schema_can_be_disabled() {
-		$this->assertCount( 0, $this->json_ld( $this->render( '[wp_toc schema="false"]<h2>A</h2>' ) ) );
+	public function test_schema_is_always_output() {
+		// The 1.1.0 development "schema" attribute was removed: schema.org output has no opt-out.
+		$out = $this->render( '[wp_toc schema="false"]<h2>A</h2>' );
+		$this->assertCount( 1, $this->json_ld( $out ) );
+		$this->assertStringContainsString( 'itemtype="https://schema.org/SiteNavigationElement"', $out );
+	}
 
-		add_filter( 'wp_toc_schema', '__return_false' );
-		$this->assertCount( 0, $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) ) );
+	public function test_microdata_covers_every_element_and_matches_json_ld() {
+		$out = $this->render( '[wp_toc tags="h2,h3,h4"]<h2>A</h2><h3>B</h3><h4>C</h4><h2>D</h2>', 7 );
+		preg_match( '#<nav.*?</nav>#s', $out, $m );
+		$nav = $m[0];
+
+		$this->assertStringContainsString( '<nav class="wp-toc auto-toc-container" aria-labelledby="wp-toc-title-1" itemscope itemtype="https://schema.org/SiteNavigationElement" itemid="https://example.com/post-7/#wp-toc-1">', $nav );
+		$this->assertStringContainsString( '<link itemprop="isPartOf" href="https://example.com/post-7/#webpage">', $nav );
+		$this->assertStringContainsString( 'id="wp-toc-title-1" itemprop="name">Table of Contents</span>', $nav );
+
+		// Every entry: a WebPageElement with url and name, nested through hasPart.
+		$this->assertSame( 4, preg_match_all( '#<li itemprop="hasPart" itemscope itemtype="https://schema.org/WebPageElement" itemid="([^"]+)"><a href="([^"]+)" itemprop="url"><span itemprop="name">[^<]+</span></a>#', $nav, $items ) );
+		$this->assertSame( preg_match_all( '#<li[\s>]#', $nav ), 4, 'No entry without microdata' );
+		$this->assertSame( preg_match_all( '#<a[\s>]#', $nav ), 4, 'No link without microdata' );
+
+		// Microdata itemids are the JSON-LD @ids of the same sections.
+		$json_ids = array();
+		array_walk_recursive(
+			$this->json_ld( $out )[0]['hasPart'],
+			static function ( $value, $key ) use ( &$json_ids ) {
+				if ( '@id' === $key ) {
+					$json_ids[] = $value;
+				}
+			}
+		);
+		$this->assertSame( $json_ids, $items[1] );
+		$this->assertSame( array( '#a', '#b', '#c', '#d' ), $items[2] );
+	}
+
+	public function test_microdata_without_a_post_has_no_ids() {
+		$out = $this->render( '[wp_toc]<h2>A</h2>', 0 );
+		$this->assertStringContainsString( 'itemscope itemtype="https://schema.org/SiteNavigationElement">', $out );
+		$this->assertStringNotContainsString( 'itemid=', $out );
+		$this->assertStringNotContainsString( 'isPartOf', $out );
+	}
+
+	public function test_schema_filter_can_change_json_ld() {
+		add_filter(
+			'wp_toc_schema',
+			static function ( array $data ): array {
+				$data['name'] = 'Changed';
+				return $data;
+			}
+		);
+		$this->assertSame( 'Changed', $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0]['name'] );
 	}
 
 	public function test_schema_needs_a_post() {
@@ -449,6 +506,166 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 		$GLOBALS['wp_toc_test']['is_admin'] = true;
 		$this->render( '[wp_toc]<h2>A</h2>' );
 		$this->assertFalse( wp_style_is( 'wp-toc' ) );
+	}
+
+	// ---------------------------------------------------------------------
+	// Automatic insertion (no shortcode needed).
+	// ---------------------------------------------------------------------
+
+	/**
+	 * Puts the test in the main loop of a singular view of post 42.
+	 */
+	private function view_post( int $post_id = 42 ): void {
+		$GLOBALS['wp_toc_test']['singular']   = true;
+		$GLOBALS['wp_toc_test']['in_loop']    = true;
+		$GLOBALS['wp_toc_test']['main_query'] = true;
+		$GLOBALS['wp_toc_test']['queried_id'] = $post_id;
+	}
+
+	private const LONG_POST = "<p>Intro</p>\n\n<h2>One</h2>\n\n<p>a</p>\n\n<h3>Two</h3>\n\n<h2>Three</h2>";
+
+	public function test_auto_inserts_before_first_heading_without_a_shortcode() {
+		$this->view_post();
+		$out = $this->the_content( self::LONG_POST );
+
+		$this->assertSame( array( 'One' => array( 'Two' => array() ), 'Three' => array() ), $this->toc_structure( $out ) );
+		$this->assertMatchesRegularExpression( '#<p>Intro</p>\s*<nav class="wp-toc[^>]*>.*</nav><script type="application/ld\+json".*?</script><h2 id="one">One</h2>#s', $out );
+		$this->assertCount( 1, $this->json_ld( $out ) );
+		$this->assertTrue( wp_style_is( 'wp-toc' ), 'CSS is loaded for the automatic TOC' );
+	}
+
+	public function test_auto_insert_needs_three_headings_by_default() {
+		$this->view_post();
+		$out = $this->the_content( "<h2>One</h2>\n\n<h2>Two</h2>" );
+		$this->assertStringNotContainsString( '<nav', $out );
+		$this->assertStringContainsString( '<h2 id="one">One</h2>', $out, 'Headings still get anchors' );
+	}
+
+	public function test_manual_shortcode_replaces_the_automatic_toc() {
+		$this->view_post();
+		$out = $this->the_content( self::LONG_POST . "\n\n[wp_toc title=\"Here\"]" );
+		$this->assertSame( 1, substr_count( $out, '<nav' ) );
+		$this->assertStringContainsString( '>Here</span>', $out );
+		$this->assertMatchesRegularExpression( '#<h2 id="three">Three</h2>\s*<nav#', $out, 'TOC sits where the shortcode is' );
+	}
+
+	public function test_auto_insert_positions() {
+		$this->view_post();
+
+		add_filter( 'wp_toc_auto_insert', static fn( array $s ): array => array( 'position' => 'top' ) + $s );
+		$this->assertStringStartsWith( '<nav', $this->the_content( self::LONG_POST ) );
+
+		remove_all_filters( 'wp_toc_auto_insert' );
+		add_filter( 'wp_toc_auto_insert', static fn( array $s ): array => array( 'position' => 'after_first_paragraph' ) + $s );
+		$this->assertStringStartsWith( '<p>Intro</p><nav', $this->the_content( self::LONG_POST ) );
+	}
+
+	public function test_auto_insert_attributes_and_post_types_are_configurable() {
+		$this->view_post();
+		add_filter(
+			'wp_toc_auto_insert',
+			static fn( array $s ): array => array(
+				'post_types' => array( 'page' ),
+				'atts'       => array(
+					'min'   => '1',
+					'title' => 'Contents',
+				),
+			) + $s
+		);
+
+		$this->assertStringNotContainsString( '<nav', $this->the_content( self::LONG_POST ), 'Posts are no longer included' );
+
+		$GLOBALS['wp_toc_test']['post_types'][42] = 'page';
+		$out = $this->the_content( "<h2>Only</h2>" );
+		$this->assertStringContainsString( '>Contents</span>', $out );
+	}
+
+	public function test_auto_insert_can_be_turned_off() {
+		$this->view_post();
+		add_filter( 'wp_toc_auto_insert', static fn( array $s ): array => array( 'enabled' => false ) + $s );
+		$out = $this->the_content( self::LONG_POST );
+		$this->assertStringNotContainsString( '<nav', $out );
+		$this->assertStringNotContainsString( 'id="one"', $out, 'Content is left alone' );
+	}
+
+	/**
+	 * @dataProvider provide_contexts_without_auto_insert
+	 */
+	public function test_no_auto_insert_outside_the_main_post( string $key, $value ) {
+		$this->view_post();
+		if ( 'password' === $key ) {
+			$GLOBALS['wp_toc_test']['password'][42] = true;
+		} else {
+			$GLOBALS['wp_toc_test'][ $key ] = $value;
+		}
+
+		$this->assertStringNotContainsString( '<nav', $this->the_content( self::LONG_POST ) );
+	}
+
+	public static function provide_contexts_without_auto_insert(): array {
+		return array(
+			'archive'            => array( 'singular', false ),
+			'outside the loop'   => array( 'in_loop', false ),
+			'secondary query'    => array( 'main_query', false ),
+			'feed'               => array( 'is_feed', true ),
+			'admin'              => array( 'is_admin', true ),
+			'another post'       => array( 'queried_id', 7 ),
+			'password protected' => array( 'password', true ),
+		);
+	}
+
+	// ---------------------------------------------------------------------
+	// Theme or plugin.
+	// ---------------------------------------------------------------------
+
+	public function test_context_detection() {
+		$this->assertSame( 'plugin', WP_TOC::context_for( WP_PLUGIN_DIR . '/wp-toc/wp-toc.php' ) );
+		$this->assertSame( 'plugin', WP_TOC::context_for( WPMU_PLUGIN_DIR . '/wp-toc/wp-toc.php' ) );
+		$this->assertSame( 'theme', WP_TOC::context_for( '/srv/site/wp-content/themes/child/inc/wp-toc/wp-toc.php' ) );
+		$this->assertSame( 'plugin', WP_TOC::context(), 'The test checkout sits in the plugins directory' );
+	}
+
+	public function test_base_url_in_theme_and_other_locations() {
+		$this->assertSame( 'https://example.com/wp-content/themes/child/inc/wp-toc/', WP_TOC::base_url_for( '/srv/site/wp-content/themes/child/inc/wp-toc/wp-toc.php' ) );
+		$this->assertSame( 'https://example.com/wp-content/themes/parent/wp-toc/', WP_TOC::base_url_for( '/srv/site/wp-content/themes/parent/wp-toc/wp-toc.php' ) );
+		$this->assertSame( 'https://example.com/wp-content/lib/wp-toc/', WP_TOC::base_url_for( '/srv/site/wp-content/lib/wp-toc/wp-toc.php' ) );
+		$this->assertSame( '', WP_TOC::base_url_for( '/opt/elsewhere/wp-toc/wp-toc.php' ) );
+		$this->assertSame( 'https://example.com/wp-content/plugins/wp-toc/', WP_TOC::base_url_for( WP_PLUGIN_DIR . '/wp-toc/wp-toc.php' ) );
+	}
+
+	public function test_css_is_inlined_when_folder_has_no_url() {
+		add_filter( 'wp_toc_base_url', '__return_empty_string' );
+		$this->render( '[wp_toc]<h2>A</h2>' );
+
+		$this->assertFalse( $GLOBALS['wp_toc_test']['registered']['wp-toc'] );
+		$this->assertStringContainsString( '.wp-toc {', $GLOBALS['wp_toc_test']['inline_css']['wp-toc'] );
+	}
+
+	/**
+	 * A theme can load WP TOC after init has run.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_loading_after_init_registers_shortcodes_immediately() {
+		remove_all_actions( 'init' );
+		remove_shortcode( 'wp_toc' );
+		remove_shortcode( 'auto_toc' );
+		do_action( 'init' );
+		$this->assertFalse( shortcode_exists( 'wp_toc' ) );
+
+		WP_TOC::init();
+		$this->assertTrue( shortcode_exists( 'wp_toc' ) );
+		$this->assertTrue( shortcode_exists( 'auto_toc' ) );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_wp_toc_url_constant_overrides_base_url() {
+		define( 'WP_TOC_URL', 'https://cdn.example.com/wp-toc' );
+		$this->assertSame( 'https://cdn.example.com/wp-toc/', WP_TOC::base_url_for( WP_TOC_FILE ) );
 	}
 
 	// ---------------------------------------------------------------------

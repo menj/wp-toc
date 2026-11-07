@@ -10,7 +10,7 @@
         }
     ],
     "require": {
-        "php": ">=7.4"
+        "php": ">=8.4"
     },
     "require-dev": {
         "phpunit/phpunit": "^9.6",
@@ -24,7 +24,7 @@
         },
         "sort-packages": true,
         "platform": {
-            "php": "7.4.33"
+            "php": "8.4.0"
         }
     },
     "scripts": {
@@ -35,10 +35,12 @@
         "test": [
             "@install-wp",
             "phpunit"
-        ]
+        ],
+        "test-guard": "php tests/php-version-guard.php"
     },
     "scripts-descriptions": {
         "install-wp": "Download the WordPress core files the tests need.",
-        "test": "Run the PHPUnit tests."
+        "test": "Run the PHPUnit tests.",
+        "test-guard": "Check that WP TOC refuses to load on PHP below 8.4 (run with an old PHP)."
     }
 }

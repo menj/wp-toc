@@ -25,7 +25,7 @@ abstract class WP_TOC_TestCase extends TestCase {
 	 * Removes filters a test added.
 	 */
 	protected function tearDown(): void {
-		foreach ( array( 'wp_toc_enabled', 'wp_toc_items', 'wp_toc_html', 'wp_toc_schema', 'wp_toc_schema_webpage_id', 'wp_toc_heading_id', 'wp_toc_load_css', 'wp_toc_default_atts' ) as $hook ) {
+		foreach ( array( 'wp_toc_enabled', 'wp_toc_items', 'wp_toc_html', 'wp_toc_schema', 'wp_toc_schema_webpage_id', 'wp_toc_heading_id', 'wp_toc_load_css', 'wp_toc_default_atts', 'wp_toc_auto_insert', 'wp_toc_base_url' ) as $hook ) {
 			remove_all_filters( $hook );
 		}
 		parent::tearDown();
@@ -73,11 +73,13 @@ abstract class WP_TOC_TestCase extends TestCase {
 	protected function toc_structure( $html, $nth = 0 ) {
 		preg_match_all( '#<nav class="wp-toc[^"]*"[^>]*>.*?</nav>#s', $html, $m );
 		$this->assertArrayHasKey( $nth, $m[0], 'TOC not found in: ' . $html );
-		// "<details open>" is valid HTML but not XML.
+		// Boolean attributes ("<details open>", "itemscope") and void <link>/<meta> are valid HTML but not XML.
 		$nav = str_replace( ' open>', ' open="open">', $m[0][ $nth ] );
+		$nav = (string) preg_replace( '/ itemscope(?=[ >])/', ' itemscope="itemscope"', $nav );
+		$nav = (string) preg_replace( '/<(link|meta)\b([^>]*?)\s*\/?>/', '<$1$2/>', $nav );
 
 		$this->assertSame( substr_count( $nav, '<ul' ), substr_count( $nav, '</ul>' ), 'Unbalanced <ul>' );
-		$this->assertSame( substr_count( $nav, '<li>' ), substr_count( $nav, '</li>' ), 'Unbalanced <li>' );
+		$this->assertSame( preg_match_all( '/<li[\s>]/', $nav ), substr_count( $nav, '</li>' ), 'Unbalanced <li>' );
 
 		$doc = new DOMDocument();
 		$this->assertTrue( $doc->loadXML( $nav ), 'TOC markup is not well-formed: ' . $nav );
