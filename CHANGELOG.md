@@ -25,7 +25,8 @@ Upgrade notes: [UPGRADING.md](UPGRADING.md#from-10x-to-110).
 - Attributes: `depth`, `min`, `collapsible`, `collapsed`, `schema`.
 - Skip a heading with the class `no-toc` or a `data-no-toc` attribute. Headings inside `<template>` are always skipped.
 - Readable ids for non-Latin headings (`#مرحبا-بالعالم` instead of `#%d9%85…`).
-- schema.org JSON-LD: a `WebPage` node with nested `WebPageElement` sections, linked to Yoast SEO's or Rank Math's page node by `@id`.
+- schema.org JSON-LD: a `WebPage` node with nested `WebPageElement` sections, linked to Yoast SEO's or Rank Math's page node by `@id`. With Rank Math, the `@id` uses Rank Math's canonical URL.
+- Rank Math compatibility: registers with `rank_math/researches/toc_plugins` so Rank Math's "Table of Contents" analysis check passes.
 - Filters: `wp_toc_enabled`, `wp_toc_default_atts`, `wp_toc_items`, `wp_toc_heading_id`, `wp_toc_html`, `wp_toc_schema`, `wp_toc_schema_webpage_id`, `wp_toc_load_css`, `wp_toc_content_filter_priority`.
 - `wp-toc-*` CSS classes alongside the existing `auto-toc-*` ones.
 - `scroll-margin-top` on headings, so sticky headers don't cover them (`--wp-toc-scroll-offset`).
@@ -37,6 +38,7 @@ Upgrade notes: [UPGRADING.md](UPGRADING.md#from-10x-to-110).
 - The TOC is a `<nav>` landmark labelled by its title (or `aria-label` when the title is empty), instead of a `<div>`.
 - The title is a `<span>` instead of a `<div>`.
 - Nested lists have the class `wp-toc-sublist`.
+- Entries added through `wp_toc_items` without an `id` or `text` are skipped instead of rendering empty links.
 - Styles moved from an inline `<style>` printed on every page to `assets/css/wp-toc.css`, loaded only where a TOC is used. Colours now follow the theme's text colour.
 - Code moved into the `WP_TOC` class in `includes/class-wp-toc.php`. The functions `wp_auto_toc_prepare_content`, `wp_auto_toc_shortcode` and `wp_auto_toc_styles` and the `$wp_auto_toc_items` global were removed.
 - Requires WordPress 6.5 and PHP 7.4.
