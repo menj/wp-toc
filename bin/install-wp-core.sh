@@ -1,26 +1,48 @@
 #!/usr/bin/env bash
 # Downloads the WordPress core files the tests load into .cache/wordpress/.
-# Usage: bin/install-wp-core.sh [version]   (default: the version pinned below)
+# Usage: bin/install-wp-core.sh [version]   (default: WP_TOC_WP_VERSION or the version pinned below)
+#
+# Safe to run concurrently: installs are serialized with a lock (where flock is
+# available), and new files are staged next to the old ones and swapped in with
+# renames, so a test run never sees a half-extracted tree.
 set -euo pipefail
 
 VERSION="${1:-${WP_TOC_WP_VERSION:-7.1.4}}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="$ROOT/.cache/wordpress"
+CACHE="$ROOT/.cache"
+DEST="$CACHE/wordpress"
 STAMP="$DEST/.version"
 
-if [ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$VERSION" ]; then
+installed() {
+	[ -f "$STAMP" ] && [ "$(cat "$STAMP")" = "$VERSION" ]
+}
+
+if installed; then
 	exit 0
 fi
 
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$CACHE"
+if command -v flock >/dev/null 2>&1; then
+	exec 9>"$CACHE/.install.lock"
+	flock 9
+	# Another run may have finished the install while this one waited.
+	if installed; then
+		exit 0
+	fi
+fi
+
+STAGE="$(mktemp -d "$CACHE/wordpress.new.XXXXXX")"
+OLD="$CACHE/wordpress.old.$$"
+trap 'rm -rf "$STAGE" "$OLD"' EXIT
 
 echo "Downloading WordPress $VERSION..."
-curl -fsSL "https://wordpress.org/wordpress-${VERSION}.tar.gz" -o "$TMP/wp.tar.gz"
-tar -xzf "$TMP/wp.tar.gz" -C "$TMP"
+curl -fsSL "https://wordpress.org/wordpress-${VERSION}.tar.gz" | tar -xz -C "$STAGE" wordpress/wp-includes
+mv "$STAGE/wordpress/wp-includes" "$STAGE/wp-includes"
+rmdir "$STAGE/wordpress"
+echo "$VERSION" > "$STAGE/.version"
 
-rm -rf "$DEST"
-mkdir -p "$DEST"
-mv "$TMP/wordpress/wp-includes" "$DEST/wp-includes"
-echo "$VERSION" > "$STAMP"
+if [ -d "$DEST" ]; then
+	mv "$DEST" "$OLD"
+fi
+mv "$STAGE" "$DEST"
 echo "WordPress $VERSION installed in .cache/wordpress"
