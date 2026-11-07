@@ -1,0 +1,82 @@
+/**
+ * WP TOC default styles.
+ *
+ * Colours are derived from the theme's text colour, so the box suits light
+ * and dark themes. Override the custom properties to restyle it.
+ * Disable this stylesheet with: add_filter( 'wp_toc_load_css', '__return_false' );
+ */
+.wp-toc {
+	--wp-toc-bg: rgba(127, 127, 127, 0.08);
+	--wp-toc-border: rgba(127, 127, 127, 0.3);
+	--wp-toc-indent: 1.25em;
+	background: var(--wp-toc-bg);
+	border: 1px solid var(--wp-toc-border);
+	border-radius: 4px;
+	box-sizing: border-box;
+	display: inline-block;
+	margin: 1.25em 0;
+	max-width: 100%;
+	min-width: min(250px, 100%);
+	padding: 1em;
+}
+
+.wp-toc-title {
+	display: block;
+	font-size: 1.1em;
+	font-weight: 700;
+	margin-bottom: 0.6em;
+}
+
+.wp-toc-summary {
+	cursor: pointer;
+}
+
+.wp-toc-summary .wp-toc-title {
+	display: inline;
+}
+
+.wp-toc-details:not([open]) .wp-toc-summary .wp-toc-title {
+	margin-bottom: 0;
+}
+
+.wp-toc-details[open] .wp-toc-summary {
+	margin-bottom: 0.6em;
+}
+
+.wp-toc-list,
+.wp-toc-list ul {
+	list-style: none;
+	margin: 0;
+	padding-left: 0;
+}
+
+.wp-toc-list ul {
+	padding-left: var(--wp-toc-indent);
+}
+
+.wp-toc-list li {
+	line-height: 1.4;
+	margin: 0.3em 0 0;
+}
+
+.wp-toc-list a {
+	border-bottom: 1px solid transparent;
+	color: inherit;
+	text-decoration: none;
+}
+
+.wp-toc-list a:hover,
+.wp-toc-list a:focus-visible {
+	border-bottom-color: currentColor;
+}
+
+/* Keep headings clear of sticky headers when jumping to them. */
+:where(h1, h2, h3, h4, h5, h6)[id] {
+	scroll-margin-top: var(--wp-toc-scroll-offset, 2rem);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	html:has(.wp-toc) {
+		scroll-behavior: smooth;
+	}
+}
