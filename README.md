@@ -107,7 +107,20 @@ After the first TOC in a post, WP TOC outputs JSON-LD like this:
 }
 ```
 
-The `@id` matches the WebPage node that Rank Math outputs. With Yoast SEO it is the page URL, which is what Yoast uses. Search engines merge nodes with the same `@id`, so the sections become part of the SEO plugin's graph.
+The `@id` matches the WebPage node your SEO plugin outputs, so search engines merge the sections into its graph:
+
+- **Rank Math:** Rank Math's canonical URL + `#webpage`, so a custom canonical is respected.
+- **Yoast SEO:** the page URL.
+- **Neither:** the permalink + `#webpage`.
+
+## Rank Math
+
+WP TOC is checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49:
+
+- Rank Math's **Table of Contents** content-analysis check recognizes WP TOC.
+- The schema attaches to Rank Math's WebPage node, as above.
+- The TOC never leaks into Rank Math's auto-generated descriptions, even when Rank Math is set to parse shortcodes.
+- Headings that already have anchors (for example from Rank Math's TOC block) keep them.
 
 This markup does not produce a rich result. Google's "Jump to" links come from the heading anchors themselves. Turn the markup off per TOC with `schema="false"`, or everywhere with `add_filter( 'wp_toc_schema', '__return_false' );`.
 

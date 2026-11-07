@@ -106,11 +106,30 @@ and the `<nav>` also gets the class `wp-toc--collapsible`.
   first TOC in a post that has `schema` on.
 - A `WebPage` node with `url` set to the permalink and `hasPart` listing each
   section as a `WebPageElement` (`name`, absolute `url` with the percent-encoded `#anchor`), nested to match the TOC.
-- `@id`: the permalink when Yoast SEO is active (`WPSEO_VERSION` defined),
-  otherwise permalink + `#webpage` (matches Rank Math). Search engines merge
-  nodes with the same `@id`, so the sections attach to the SEO plugin's page node.
+- `@id`, chosen to match the SEO plugin's WebPage node so search engines merge the two:
+  - Rank Math active (`RANK_MATH_VERSION`) and the post is the page being viewed:
+    Rank Math's canonical URL + `#webpage` (`RankMath\Paper\Paper::get()->get_canonical()`),
+    which also covers a custom canonical. Falls back to the next rule if that call fails.
+  - Yoast SEO active (`WPSEO_VERSION`): the permalink.
+  - Otherwise: permalink + `#webpage`.
+- Section `url`s always use the permalink, like Rank Math's own TOC block.
 - Encoded with `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP`.
 - No permalink (no current post) means no JSON-LD.
+
+## Rank Math compatibility
+
+Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49.
+
+- **Content analysis:** WP TOC adds itself to `rank_math/researches/toc_plugins`,
+  so Rank Math's "Table of Contents" check passes when WP TOC is active.
+- **Schema:** see the `@id` rules above. Rank Math's own TOC block outputs separate
+  `SiteNavigationElement` entries; both can be used on the same page.
+- **Descriptions:** with Rank Math's `rank_math/paper/auto_generated_description/apply_shortcode`
+  filter on, Rank Math runs shortcodes outside `the_content`. `[wp_toc]` then outputs only
+  its HTML-comment placeholder, which Rank Math strips, so no TOC text leaks into descriptions.
+- **Rank Math Pro video detection** runs `the_content` on save to find embeds. The TOC
+  contains no video, iframe or embed markup, and the stylesheet is not enqueued in admin requests.
+- **Existing anchors:** heading ids added by Rank Math's TOC block are kept.
 
 ## Hooks
 
@@ -156,7 +175,7 @@ Limitations:
 | `CHANGELOG.md` | Release history |
 | `LICENSE` | GNU GPL v3 |
 | `LICENSE-MIT-ORIGINAL` | MIT notice for the original code |
-| `tests/` | PHPUnit tests (real WordPress core code, no database) |
+| `tests/` | PHPUnit tests (real WordPress core code, no database); `tests/fixtures/` holds a stand-in for Rank Math's `Paper` class |
 | `bin/install-wp-core.sh` | Downloads the WordPress core files the tests load into `.cache/wordpress` |
 | `composer.json`, `phpunit.xml.dist`, `phpcs.xml.dist` | Dev tooling |
 | `.github/workflows/ci.yml` | CI: lint, PHPCS, PHPUnit on PHP 7.4–8.4 with WordPress 7.1, plus WordPress 6.5 |

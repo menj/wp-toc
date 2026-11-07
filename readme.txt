@@ -57,6 +57,10 @@ Filters: `wp_toc_enabled`, `wp_toc_default_atts`, `wp_toc_items`, `wp_toc_headin
 
 No. There is no rich result for a table of contents. Google's "Jump to" links come from the heading anchors that WP TOC adds. The JSON-LD describes the page's structure for search engines and other tools.
 
+= Does it work with Rank Math? =
+
+Yes. Rank Math's "Table of Contents" analysis check recognizes WP TOC, the schema attaches to Rank Math's WebPage node using Rank Math's canonical URL, and the TOC never appears in Rank Math's auto-generated descriptions.
+
 = Can I use my own styles? =
 
 Yes. Override the custom properties `--wp-toc-bg`, `--wp-toc-border`, `--wp-toc-indent` and `--wp-toc-scroll-offset`, or turn the stylesheet off with `add_filter( 'wp_toc_load_css', '__return_false' );`.
@@ -78,6 +82,7 @@ No. Headings that already have an `id` keep it.
 * Fixed: existing heading ids were overwritten, and generated ids could clash with other ids.
 * Added: `[wp_toc]` shortcode (`[auto_toc]` still works), `depth`, `min`, `collapsible`, `collapsed` and `schema` attributes.
 * Added: schema.org JSON-LD, `no-toc` exclusions, filters, translations.
+* Added: Rank Math compatibility (TOC analysis check, canonical-based schema @id).
 * Changed: accessible `<nav>` markup; the stylesheet only loads where needed.
 * Changed: requires WordPress 6.5 and PHP 7.4. Renamed to WP TOC; licensed GPLv3 or later.
 
