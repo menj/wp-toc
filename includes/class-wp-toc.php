@@ -62,10 +62,11 @@ final class WP_TOC {
 	 *
 	 * @return void
 	 */
-	public static function init() {
+	public static function init(): void {
 		add_action( 'init', array( __CLASS__, 'load_textdomain' ) );
 		add_action( 'init', array( __CLASS__, 'register_shortcodes' ) );
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
+		add_filter( 'rank_math/researches/toc_plugins', array( __CLASS__, 'register_with_rank_math' ) );
 
 		/**
 		 * Filters the priority of the the_content filter that builds the TOC.
@@ -83,7 +84,7 @@ final class WP_TOC {
 	 *
 	 * @return void
 	 */
-	public static function load_textdomain() {
+	public static function load_textdomain(): void {
 		load_plugin_textdomain( 'wp-toc', false, dirname( plugin_basename( WP_TOC_FILE ) ) . '/languages' );
 	}
 
@@ -92,9 +93,23 @@ final class WP_TOC {
 	 *
 	 * @return void
 	 */
-	public static function register_shortcodes() {
+	public static function register_shortcodes(): void {
 		add_shortcode( self::SHORTCODE, array( __CLASS__, 'shortcode' ) );
 		add_shortcode( self::LEGACY_SHORTCODE, array( __CLASS__, 'shortcode' ) );
+	}
+
+	/**
+	 * Tells Rank Math that a table of contents plugin is active, so its
+	 * "Table of Contents" content-analysis check passes.
+	 *
+	 * @param mixed $plugins Plugin basename => name.
+	 * @return array
+	 */
+	public static function register_with_rank_math( $plugins ) {
+		$plugins = is_array( $plugins ) ? $plugins : array();
+
+		$plugins[ plugin_basename( WP_TOC_FILE ) ] = 'WP TOC';
+		return $plugins;
 	}
 
 	/**
@@ -102,13 +117,8 @@ final class WP_TOC {
 	 *
 	 * @return void
 	 */
-	public static function register_assets() {
-		wp_register_style(
-			self::STYLE_HANDLE,
-			plugins_url( 'assets/css/wp-toc.css', WP_TOC_FILE ),
-			array(),
-			WP_TOC_VERSION
-		);
+	public static function register_assets(): void {
+		self::register_style();
 
 		if ( ! is_singular() ) {
 			return;
@@ -129,7 +139,7 @@ final class WP_TOC {
 	 *
 	 * @return void
 	 */
-	public static function enqueue_style() {
+	public static function enqueue_style(): void {
 		/**
 		 * Filters whether WP TOC loads its stylesheet.
 		 *
@@ -140,15 +150,24 @@ final class WP_TOC {
 		}
 
 		if ( ! wp_style_is( self::STYLE_HANDLE, 'registered' ) ) {
-			wp_register_style(
-				self::STYLE_HANDLE,
-				plugins_url( 'assets/css/wp-toc.css', WP_TOC_FILE ),
-				array(),
-				WP_TOC_VERSION
-			);
+			self::register_style();
 		}
 
 		wp_enqueue_style( self::STYLE_HANDLE );
+	}
+
+	/**
+	 * Registers the stylesheet.
+	 *
+	 * @return void
+	 */
+	private static function register_style(): void {
+		wp_register_style(
+			self::STYLE_HANDLE,
+			plugins_url( 'assets/css/wp-toc.css', WP_TOC_FILE ),
+			array(),
+			WP_TOC_VERSION
+		);
 	}
 
 	/**
@@ -156,7 +175,7 @@ final class WP_TOC {
 	 *
 	 * @return array
 	 */
-	public static function default_atts() {
+	public static function default_atts(): array {
 		$defaults = array(
 			'tags'        => 'h2,h3',
 			'title'       => __( 'Table of Contents', 'wp-toc' ),
@@ -181,10 +200,13 @@ final class WP_TOC {
 	 * @param array|string $atts Shortcode attributes.
 	 * @return string
 	 */
-	public static function shortcode( $atts ) {
+	public static function shortcode( $atts ): string {
 		$atts = shortcode_atts( self::default_atts(), $atts, self::SHORTCODE );
 
-		self::enqueue_style();
+		// Admin requests also render content (e.g. Rank Math Pro scans it for videos on save); no page to style there.
+		if ( ! is_admin() ) {
+			self::enqueue_style();
+		}
 
 		// Hex keeps the payload free of "--" and ">", which would end the comment early.
 		return self::PLACEHOLDER_PREFIX . bin2hex( (string) wp_json_encode( $atts ) ) . '-->';
@@ -204,12 +226,13 @@ final class WP_TOC {
 	 *     @type bool   $schema      Whether to output schema.org JSON-LD.
 	 * }
 	 */
-	public static function sanitize_atts( $atts ) {
-		$atts = array_merge( self::default_atts(), (array) $atts );
+	public static function sanitize_atts( $atts ): array {
+		$defaults = self::default_atts();
+		$atts     = array_merge( $defaults, (array) $atts );
 
 		$levels = self::parse_levels( $atts['tags'] );
 		if ( empty( $levels ) ) {
-			$levels = self::parse_levels( self::default_atts()['tags'] );
+			$levels = self::parse_levels( $defaults['tags'] );
 		}
 		if ( empty( $levels ) ) {
 			$levels = array( 2, 3 );
@@ -232,7 +255,7 @@ final class WP_TOC {
 	 * @param string $tags Comma-separated tag names.
 	 * @return int[]
 	 */
-	private static function parse_levels( $tags ) {
+	private static function parse_levels( $tags ): array {
 		$levels = array();
 		foreach ( explode( ',', strtolower( (string) $tags ) ) as $tag ) {
 			$tag = trim( $tag );
@@ -250,7 +273,7 @@ final class WP_TOC {
 	 * @param mixed $value Value.
 	 * @return bool
 	 */
-	private static function to_bool( $value ) {
+	private static function to_bool( $value ): bool {
 		return is_bool( $value ) ? $value : filter_var( $value, FILTER_VALIDATE_BOOLEAN );
 	}
 
@@ -259,7 +282,7 @@ final class WP_TOC {
 	 *
 	 * @return bool
 	 */
-	public static function html_api_available() {
+	public static function html_api_available(): bool {
 		return class_exists( 'WP_HTML_Tag_Processor' ) && method_exists( 'WP_HTML_Tag_Processor', 'next_token' );
 	}
 
@@ -330,7 +353,7 @@ final class WP_TOC {
 	 * @param string $hex Hex-encoded JSON.
 	 * @return array
 	 */
-	private static function decode_atts( $hex ) {
+	private static function decode_atts( string $hex ): array {
 		$json = ( '' !== $hex && 0 === strlen( $hex ) % 2 ) ? hex2bin( $hex ) : false;
 		$atts = false !== $json ? json_decode( $json, true ) : null;
 		return is_array( $atts ) ? $atts : array();
@@ -351,7 +374,7 @@ final class WP_TOC {
 	 *     @type array  $ids     Every id in the updated content, as keys.
 	 * }
 	 */
-	public static function process_headings( $html ) {
+	public static function process_headings( string $html ): array {
 		$ids            = array();
 		$headings       = array();
 		$current        = null;
@@ -479,7 +502,7 @@ final class WP_TOC {
 	 * @param string $text Heading text.
 	 * @return string
 	 */
-	private static function slug( $text ) {
+	private static function slug( string $text ): string {
 		$slug    = sanitize_title( $text );
 		$decoded = rawurldecode( $slug );
 		return ( $decoded !== $slug && preg_match( '//u', $decoded ) ) ? $decoded : $slug;
@@ -492,7 +515,7 @@ final class WP_TOC {
 	 * @param array  $used Ids in use, as keys. Updated.
 	 * @return string
 	 */
-	private static function unique_id( $id, array &$used ) {
+	private static function unique_id( string $id, array &$used ): string {
 		$id = trim( (string) preg_replace( '/\s+/', '-', $id ), '-' );
 		if ( '' === $id ) {
 			$id = 'section';
@@ -520,13 +543,20 @@ final class WP_TOC {
 	 * @param array $atts  Settings from sanitize_atts().
 	 * @return array Nodes: array( 'level', 'id', 'text', 'children' => array( ...nodes ) ).
 	 */
-	public static function build_tree( array $items, array $atts ) {
+	public static function build_tree( array $items, array $atts ): array {
 		$nodes = array();
 		$roots = array();
 		$stack = array();
 
 		foreach ( $items as $item ) {
-			if ( ! isset( $item['level'], $item['id'], $item['text'] ) || ! in_array( (int) $item['level'], $atts['levels'], true ) ) {
+			// Entries can come from the wp_toc_items filter, so check their shape.
+			if (
+				! is_array( $item )
+				|| ! isset( $item['level'], $item['id'], $item['text'] )
+				|| '' === trim( (string) $item['id'] )
+				|| '' === trim( (string) $item['text'] )
+				|| ! in_array( (int) $item['level'], $atts['levels'], true )
+			) {
 				continue;
 			}
 
@@ -564,7 +594,7 @@ final class WP_TOC {
 	 * @param int[] $indices Indices to resolve.
 	 * @return array
 	 */
-	private static function nest( array $nodes, array $indices ) {
+	private static function nest( array $nodes, array $indices ): array {
 		$out = array();
 		foreach ( $indices as $index ) {
 			$node             = $nodes[ $index ];
@@ -580,7 +610,7 @@ final class WP_TOC {
 	 * @param array $tree Tree from build_tree().
 	 * @return int
 	 */
-	public static function count_nodes( array $tree ) {
+	public static function count_nodes( array $tree ): int {
 		$count = 0;
 		foreach ( $tree as $node ) {
 			$count += 1 + self::count_nodes( $node['children'] );
@@ -597,7 +627,7 @@ final class WP_TOC {
 	 * @param int   $post_id  Current post ID.
 	 * @return string
 	 */
-	public static function render_html( array $tree, array $atts, array &$used_ids, $post_id = 0 ) {
+	public static function render_html( array $tree, array $atts, array &$used_ids, int $post_id = 0 ): string {
 		++self::$toc_count;
 
 		$classes = 'wp-toc auto-toc-container' . ( $atts['collapsible'] ? ' wp-toc--collapsible' : '' );
@@ -643,7 +673,7 @@ final class WP_TOC {
 	 * @param bool  $is_root Whether this is the top level.
 	 * @return string
 	 */
-	private static function render_list( array $nodes, $is_root ) {
+	private static function render_list( array $nodes, bool $is_root ): string {
 		$html = '<ul class="' . ( $is_root ? 'wp-toc-list auto-toc-list' : 'wp-toc-sublist' ) . '">';
 		foreach ( $nodes as $node ) {
 			$html .= '<li><a href="#' . esc_attr( $node['id'] ) . '">' . esc_html( $node['text'] ) . '</a>';
@@ -661,13 +691,14 @@ final class WP_TOC {
 	 * Outputs a WebPage node whose hasPart lists each section as a
 	 * WebPageElement, nested to match the TOC. When Yoast SEO or Rank Math is
 	 * active, the node reuses the @id of the WebPage they output, so search
-	 * engines merge it into their graph.
+	 * engines merge it into their graph. Section URLs use the permalink, like
+	 * Rank Math's own TOC block.
 	 *
 	 * @param array $tree    Tree from build_tree().
 	 * @param int   $post_id Current post ID.
 	 * @return string
 	 */
-	public static function render_schema( array $tree, $post_id ) {
+	public static function render_schema( array $tree, int $post_id ): string {
 		$permalink = $post_id ? get_permalink( $post_id ) : false;
 		if ( ! $permalink || ! $tree ) {
 			return '';
@@ -709,11 +740,17 @@ final class WP_TOC {
 	 * @param int    $post_id   Post ID.
 	 * @return string
 	 */
-	private static function schema_webpage_id( $permalink, $post_id ) {
-		if ( defined( 'WPSEO_VERSION' ) ) {
-			$id = $permalink; // Yoast SEO uses the page URL as its WebPage @id.
+	private static function schema_webpage_id( string $permalink, int $post_id ): string {
+		$rank_math_canonical = self::rank_math_canonical( $post_id );
+
+		if ( '' !== $rank_math_canonical ) {
+			// Rank Math: canonical URL + "#webpage" (RankMath\Schema\Webpage).
+			$id = $rank_math_canonical . '#webpage';
+		} elseif ( defined( 'WPSEO_VERSION' ) ) {
+			// Yoast SEO: the page URL (Meta_Tags_Context::generate_main_schema_id()).
+			$id = $permalink;
 		} else {
-			$id = $permalink . '#webpage'; // Rank Math's WebPage @id; also used when no SEO plugin is active.
+			$id = $permalink . '#webpage';
 		}
 
 		/**
@@ -727,13 +764,44 @@ final class WP_TOC {
 	}
 
 	/**
+	 * Rank Math's canonical URL for the current page, when Rank Math is active
+	 * and $post_id is the page being viewed. Empty string otherwise.
+	 *
+	 * The canonical can differ from the permalink (a custom canonical, for
+	 * example), and Rank Math builds its WebPage @id from it.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return string
+	 */
+	private static function rank_math_canonical( int $post_id ): string {
+		if (
+			! defined( 'RANK_MATH_VERSION' )
+			|| ! class_exists( '\RankMath\Paper\Paper' )
+			|| ! is_callable( array( '\RankMath\Paper\Paper', 'get' ) )
+			|| ! is_singular()
+			|| (int) get_queried_object_id() !== $post_id
+		) {
+			return '';
+		}
+
+		try {
+			$canonical = \RankMath\Paper\Paper::get()->get_canonical();
+		} catch ( \Throwable $e ) {
+			// Rank Math internals changed; fall back to the permalink.
+			return '';
+		}
+
+		return is_string( $canonical ) ? $canonical : '';
+	}
+
+	/**
 	 * Converts tree nodes to WebPageElement entries.
 	 *
 	 * @param array  $nodes     Nodes.
 	 * @param string $permalink Post URL.
 	 * @return array
 	 */
-	private static function schema_parts( array $nodes, $permalink ) {
+	private static function schema_parts( array $nodes, string $permalink ): array {
 		$parts = array();
 		foreach ( $nodes as $node ) {
 			$part = array(
@@ -754,7 +822,7 @@ final class WP_TOC {
 	 *
 	 * @return void
 	 */
-	public static function reset() {
+	public static function reset(): void {
 		self::$toc_count = 0;
 	}
 }

@@ -16,6 +16,8 @@ function wp_toc_test_reset() {
 		'post_id'    => 0,
 		'singular'   => false,
 		'post'       => null,
+		'is_admin'   => false,
+		'queried_id' => 0,
 		'registered' => array(),
 		'enqueued'   => array(),
 	);
@@ -47,7 +49,9 @@ function wp_allowed_protocols() {
 	return array( 'http', 'https', 'ftp', 'ftps', 'mailto', 'news', 'irc', 'irc6', 'ircs', 'gopher', 'nntp', 'feed', 'telnet', 'mms', 'rtsp', 'sms', 'svn', 'tel', 'fax', 'xmpp', 'webcal', 'urn' );
 }
 function wp_json_encode( $value, $flags = 0, $depth = 512 ) { return json_encode( $value, $flags, $depth ); }
-function is_admin() { return false; }
+function is_admin() { return ! empty( $GLOBALS['wp_toc_test']['is_admin'] ); }
+function get_queried_object_id() { return $GLOBALS['wp_toc_test']['queried_id']; }
+function wp_normalize_path( $path ) { return str_replace( '\\', '/', (string) $path ); }
 function __return_false() { return false; }
 function __return_true() { return true; }
 function is_utf8_charset( $blog_charset = null ) { return true; }

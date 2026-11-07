@@ -421,6 +421,83 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 		$this->assertSame( 'https://example.com/post-42/#custom', $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0]['@id'] );
 	}
 
+	public function test_filtered_items_with_missing_id_or_text_are_skipped() {
+		add_filter(
+			'wp_toc_items',
+			static function ( $items ) {
+				$items[] = array(
+					'level' => 2,
+					'id'    => '',
+					'text'  => 'No id',
+				);
+				$items[] = array(
+					'level' => 2,
+					'id'    => 'no-text',
+					'text'  => '  ',
+				);
+				$items[] = 'not an array';
+				$items[] = array( 'level' => 2 );
+				return $items;
+			}
+		);
+		$out = $this->render( '[wp_toc]<h2>A</h2>' );
+		$this->assertSame( array( 'A' => array() ), $this->toc_structure( $out ) );
+		$this->assertStringNotContainsString( 'href="#"', $out );
+	}
+
+	public function test_style_not_enqueued_from_admin_requests() {
+		$GLOBALS['wp_toc_test']['is_admin'] = true;
+		$this->render( '[wp_toc]<h2>A</h2>' );
+		$this->assertFalse( wp_style_is( 'wp-toc' ) );
+	}
+
+	// ---------------------------------------------------------------------
+	// Rank Math compatibility.
+	// ---------------------------------------------------------------------
+
+	public function test_registers_as_toc_plugin_for_rank_math_analysis() {
+		$plugins = apply_filters( 'rank_math/researches/toc_plugins', array( 'wp-shortcode/wp-shortcode.php' => 'WP Shortcode by RankMath' ) );
+		$this->assertSame( 'WP TOC', $plugins[ plugin_basename( WP_TOC_FILE ) ] );
+		$this->assertSame( 'wp-toc/wp-toc.php', plugin_basename( WP_TOC_FILE ), 'Key matches the entry in active_plugins' );
+		$this->assertArrayHasKey( 'wp-shortcode/wp-shortcode.php', $plugins, 'Existing entries are kept' );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schema_uses_rank_math_canonical_webpage_id() {
+		define( 'RANK_MATH_VERSION', '1.0.268' );
+		require_once __DIR__ . '/fixtures/rank-math-paper.php';
+		\RankMath\Paper\Paper::$canonical = 'https://example.com/custom-canonical/';
+
+		$GLOBALS['wp_toc_test']['singular']   = true;
+		$GLOBALS['wp_toc_test']['queried_id'] = 42;
+
+		$data = $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0];
+		$this->assertSame( 'https://example.com/custom-canonical/#webpage', $data['@id'] );
+		$this->assertSame( 'https://example.com/post-42/#a', $data['hasPart'][0]['url'], 'Section URLs use the permalink, like Rank Math\'s TOC block' );
+
+		// Another post's content on the same page (e.g. a related-posts block) keeps its own permalink.
+		$data = $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>', 7 ) )[0];
+		$this->assertSame( 'https://example.com/post-7/#webpage', $data['@id'] );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_schema_falls_back_when_rank_math_internals_fail() {
+		define( 'RANK_MATH_VERSION', '1.0.268' );
+		require_once __DIR__ . '/fixtures/rank-math-paper.php';
+		\RankMath\Paper\Paper::$throw = true;
+
+		$GLOBALS['wp_toc_test']['singular']   = true;
+		$GLOBALS['wp_toc_test']['queried_id'] = 42;
+
+		$this->assertSame( 'https://example.com/post-42/#webpage', $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0]['@id'] );
+	}
+
 	/**
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
