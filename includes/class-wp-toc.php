@@ -341,7 +341,8 @@ final class WP_TOC {
 	 *
 	 * Existing heading ids are kept. New ids are unique across every id
 	 * already in the content, not just other headings. Headings with the
-	 * class "no-toc" or a data-no-toc attribute are skipped.
+	 * class "no-toc" or a data-no-toc attribute are skipped, and so are
+	 * headings inside <template>, whose content is never displayed.
 	 *
 	 * @param string $html Content HTML.
 	 * @return array {
@@ -351,9 +352,10 @@ final class WP_TOC {
 	 * }
 	 */
 	public static function process_headings( $html ) {
-		$ids      = array();
-		$headings = array();
-		$current  = null;
+		$ids            = array();
+		$headings       = array();
+		$current        = null;
+		$template_depth = 0;
 
 		// Pass 1: read every heading's text and record every existing id.
 		$processor = new WP_HTML_Tag_Processor( $html );
@@ -371,7 +373,13 @@ final class WP_TOC {
 				continue;
 			}
 
-			$is_heading = (bool) preg_match( '/^H([1-6])$/', (string) $processor->get_tag(), $m );
+			$tag        = (string) $processor->get_tag();
+			$is_heading = (bool) preg_match( '/^H([1-6])$/', $tag, $m );
+
+			if ( 'TEMPLATE' === $tag ) {
+				$template_depth = max( 0, $template_depth + ( $processor->is_tag_closer() ? -1 : 1 ) );
+				continue;
+			}
 
 			if ( $processor->is_tag_closer() ) {
 				if ( $is_heading && null !== $current ) {
@@ -383,7 +391,7 @@ final class WP_TOC {
 
 			$id = $processor->get_attribute( 'id' );
 			$id = is_string( $id ) ? trim( $id ) : '';
-			if ( '' !== $id ) {
+			if ( '' !== $id && 0 === $template_depth ) {
 				$ids[ $id ] = true;
 			}
 
@@ -396,7 +404,7 @@ final class WP_TOC {
 					'level'   => (int) $m[1],
 					'id'      => $id,
 					'text'    => '',
-					'exclude' => true === $processor->has_class( 'no-toc' ) || null !== $processor->get_attribute( 'data-no-toc' ),
+					'exclude' => $template_depth > 0 || true === $processor->has_class( 'no-toc' ) || null !== $processor->get_attribute( 'data-no-toc' ),
 					'new'     => false,
 				);
 			}
@@ -419,11 +427,12 @@ final class WP_TOC {
 				/**
 				 * Filters the id generated for a heading before it is made unique.
 				 *
-				 * @param string $slug  Slug from sanitize_title().
+				 * @param string $slug  Slug from sanitize_title(), with non-ASCII
+				 *                      characters decoded (e.g. "café-crème", "مرحبا").
 				 * @param string $text  Heading text.
 				 * @param int    $level Heading level, 1-6.
 				 */
-				$slug = (string) apply_filters( 'wp_toc_heading_id', sanitize_title( $text ), $text, $heading['level'] );
+				$slug = (string) apply_filters( 'wp_toc_heading_id', self::slug( $text ), $text, $heading['level'] );
 
 				$headings[ $i ]['id']  = self::unique_id( $slug, $ids );
 				$headings[ $i ]['new'] = true;
@@ -458,6 +467,22 @@ final class WP_TOC {
 			'items'   => $items,
 			'ids'     => $ids,
 		);
+	}
+
+	/**
+	 * Builds an id from heading text.
+	 *
+	 * Sanitize_title() percent-encodes non-ASCII characters ("%d9%85"). A
+	 * literal "%" in an id is ambiguous in URLs, so the slug is decoded back
+	 * to readable Unicode, which HTML ids and URL fragments both support.
+	 *
+	 * @param string $text Heading text.
+	 * @return string
+	 */
+	private static function slug( $text ) {
+		$slug    = sanitize_title( $text );
+		$decoded = rawurldecode( $slug );
+		return ( $decoded !== $slug && preg_match( '//u', $decoded ) ) ? $decoded : $slug;
 	}
 
 	/**
@@ -714,7 +739,7 @@ final class WP_TOC {
 			$part = array(
 				'@type' => 'WebPageElement',
 				'name'  => $node['text'],
-				'url'   => $permalink . '#' . $node['id'],
+				'url'   => $permalink . '#' . rawurlencode( $node['id'] ),
 			);
 			if ( $node['children'] ) {
 				$part['hasPart'] = self::schema_parts( $node['children'], $permalink );

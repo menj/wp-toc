@@ -23,7 +23,8 @@ Upgrade notes: [UPGRADING.md](UPGRADING.md#from-10x-to-110).
 ### Added
 - `[wp_toc]` shortcode. `[auto_toc]` keeps working as an alias.
 - Attributes: `depth`, `min`, `collapsible`, `collapsed`, `schema`.
-- Skip a heading with the class `no-toc` or a `data-no-toc` attribute.
+- Skip a heading with the class `no-toc` or a `data-no-toc` attribute. Headings inside `<template>` are always skipped.
+- Readable ids for non-Latin headings (`#مرحبا-بالعالم` instead of `#%d9%85…`).
 - schema.org JSON-LD: a `WebPage` node with nested `WebPageElement` sections, linked to Yoast SEO's or Rank Math's page node by `@id`.
 - Filters: `wp_toc_enabled`, `wp_toc_default_atts`, `wp_toc_items`, `wp_toc_heading_id`, `wp_toc_html`, `wp_toc_schema`, `wp_toc_schema_webpage_id`, `wp_toc_load_css`, `wp_toc_content_filter_priority`.
 - `wp-toc-*` CSS classes alongside the existing `auto-toc-*` ones.

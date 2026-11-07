@@ -54,8 +54,11 @@ added in 6.5, to read heading text without re-serializing the post.
 - A missing `id` is generated with `sanitize_title()` from the heading text,
   then made unique against **every** `id` in the content (not just headings),
   by adding `-2`, `-3` and so on. An empty slug becomes `section`.
+  Non-Latin characters stay readable: `<h2>مرحبا بالعالم</h2>` gets
+  `id="مرحبا-بالعالم"`, not the percent-encoded form `sanitize_title()` returns.
 - Heading text is the heading's text content with whitespace collapsed.
 - Headings with the class `no-toc` or a `data-no-toc` attribute are skipped.
+- Headings inside `<template>` are skipped, since template content is never displayed.
 - Empty headings are skipped.
 - Nesting: each entry becomes a child of the closest earlier entry with a
   lower level. Skipped levels (h2 → h4) nest one step; a first heading deeper
@@ -102,7 +105,7 @@ and the `<nav>` also gets the class `wp-toc--collapsible`.
 - One `<script type="application/ld+json" class="wp-toc-schema">` after the
   first TOC in a post that has `schema` on.
 - A `WebPage` node with `url` set to the permalink and `hasPart` listing each
-  section as a `WebPageElement` (`name`, absolute `url` with `#anchor`), nested to match the TOC.
+  section as a `WebPageElement` (`name`, absolute `url` with the percent-encoded `#anchor`), nested to match the TOC.
 - `@id`: the permalink when Yoast SEO is active (`WPSEO_VERSION` defined),
   otherwise permalink + `#webpage` (matches Rank Math). Search engines merge
   nodes with the same `@id`, so the sections attach to the SEO plugin's page node.
@@ -136,8 +139,7 @@ and the `<nav>` also gets the class `wp-toc--collapsible`.
 Limitations:
 - The TOC only covers the content passed through `the_content`. Shortcodes
   rendered elsewhere (widgets, `do_shortcode()` in templates) output nothing.
-- Heading ids generated from non-Latin text are percent-encoded by
-  `sanitize_title()` (e.g. `%d9%85…`). Links still work; use `wp_toc_heading_id` to change this.
+- Generated ids follow `sanitize_title()` rules; use `wp_toc_heading_id` to change them.
 
 ## Files
 
