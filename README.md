@@ -1,61 +1,126 @@
 # WP TOC
 
-A lightweight, server-side table of contents for WordPress. Add `[wp_toc]` to a post and WP TOC links every heading, renders a nested, accessible list, and describes the page's sections with schema.org markup. There is no JavaScript and no settings page.
+**Automatic table of contents for WordPress, built into your theme.**
 
-**Requires:** WordPress 6.5+ · PHP 7.4+ · **Version:** 1.1.0 · **License:** GPL-3.0-or-later
+**Requires:** WordPress 6.7+ · PHP 8.4+ · **Version:** 1.1.0 · **License:** GPL-3.0-or-later
 
-## Features
+## What it is for
 
-- **Reads the final page.** Works after every block and shortcode has rendered, so headings created by other plugins are included.
-- **Leaves your content alone.** Uses WordPress's HTML API (`WP_HTML_Tag_Processor`) to add `id` attributes to headings, and changes nothing else in the post.
-- **Stable anchors.** Keeps ids that headings already have. New ids are unique across the whole post, with `-2`, `-3` for duplicates.
-- **Correct nesting.** Skipped levels (h2 → h4) and posts that start with a deeper heading still produce valid, balanced lists.
-- **Accessible.** Output is a labelled `<nav>` landmark. Optional collapsing uses native `<details>`, with no JavaScript.
-- **Schema.org.** JSON-LD lists each section as a `WebPageElement`, and links to the page node from Yoast SEO or Rank Math.
-- **Light.** The stylesheet only loads on pages that use the shortcode, and adapts to light and dark themes.
-- **Extensible.** Filters for items, ids, markup, schema and defaults.
+Long articles are hard to scan. Readers want to see what a post covers and jump
+straight to the part they need, and search engines want to understand how the
+page is organised.
 
-## Installation
+WP TOC solves both, without any work from the people writing posts:
 
-1. Download the code from https://github.com/menj/wp-toc and put the folder in `wp-content/plugins/wp-toc/`.
-2. Activate **WP TOC** under **Plugins**.
+- **Readers** get a linked, nested table of contents at the top of every long
+  post. Clicking an entry jumps to that section.
+- **Search engines** get the same structure as schema.org data, so they can
+  understand the page's sections. (There is no special Google result for a
+  table of contents; Google's "Jump to" links come from the anchors WP TOC adds.)
+- **Writers** do nothing. There is no setting to fill in and no shortcode to
+  remember.
 
-The plugin is a main file plus an `includes/` folder and a stylesheet, so it is no longer meant to be pasted into `functions.php`.
+## What it does
 
-## Usage
+When a post or page is shown, WP TOC:
 
-Add the shortcode where the table of contents should appear:
+1. **Reads the headings** in the finished post (`<h2>`, `<h3>`, and so on),
+   including headings created by blocks and other plugins.
+2. **Gives each heading an anchor** (an `id` such as `#installation`), so it
+   can be linked to. Headings that already have one keep it.
+3. **Inserts a table of contents** just before the first heading, when the
+   post has at least 3 headings. Shorter posts are left as they are.
+4. **Adds schema.org data** describing the table of contents and each section
+   (microdata on the list, plus JSON-LD), linked to the page data from Yoast SEO
+   or Rank Math when either is installed.
+5. **Changes nothing else.** The rest of the post's HTML is left exactly as it was.
+
+It runs on the server, so there is no JavaScript, and its small stylesheet only
+loads on pages that show a table of contents.
+
+## Adding it to a theme (main use)
+
+WP TOC is meant to be part of your theme's code. It does not need to be
+activated.
+
+1. Copy the `wp-toc` folder into your theme, e.g. `wp-content/themes/your-theme/wp-toc/`.
+2. Add one line to the theme's `functions.php`:
+
+```php
+require_once get_stylesheet_directory() . '/wp-toc/wp-toc.php';
+```
+
+That's all. Posts and pages with 3 or more headings now show a table of contents.
+
+Use `get_template_directory()` instead if the folder is in a parent theme. The
+folder can live anywhere in the theme; WP TOC works out its own URL. Only
+`wp-toc.php`, `includes/`, `assets/` and `languages/` are needed.
+
+## Using it as a plugin (also supported)
+
+The same folder works as a normal plugin: put it in `wp-content/plugins/wp-toc/`
+and activate **WP TOC** under **Plugins**. It behaves the same way. If a theme
+also bundles it, only one copy runs.
+
+## Requirements
+
+- **PHP 8.4 or later.** On older PHP, WP TOC does not load at all and shows
+  administrators a notice explaining why.
+- **WordPress 6.7 or later**, the first version that supports PHP 8.4.
+
+## Choosing where it appears
+
+Everything works without configuration. To change the defaults, add a filter in
+the theme's `functions.php`:
+
+```php
+add_filter( 'wp_toc_auto_insert', function ( $settings ) {
+	$settings['post_types'] = array( 'post', 'docs' );       // Default: post, page.
+	$settings['position']   = 'after_first_paragraph';       // Or 'before_first_heading' (default), 'top'.
+	$settings['atts']       = array( 'min' => '4', 'tags' => 'h2,h3,h4' );
+	return $settings;
+} );
+```
+
+Turn the automatic table of contents off (you can still place it by hand):
+
+```php
+add_filter( 'wp_toc_auto_insert', function ( $settings ) {
+	$settings['enabled'] = false;
+	return $settings;
+} );
+```
+
+The automatic table of contents only appears in the main post of a single post
+or page view: not on archives, in feeds, in related-post lists, or on
+password-protected posts until they are unlocked.
+
+### Placing it by hand in one post (optional)
+
+Typing the shortcode in a post puts the table of contents exactly there instead
+of the automatic position:
 
 ```text
 [wp_toc]
 ```
 
-The 1.0 shortcode `[auto_toc]` still works and behaves the same.
-
-### Attributes
+The 1.0 shortcode `[auto_toc]` still works.
 
 | Attribute | Default | Description |
 |---|---|---|
 | `tags` | `h2,h3` | Heading levels to include, `h1`–`h6`. |
 | `title` | `Table of Contents` | Title above the list. `title=""` hides it. |
 | `depth` | `0` | Maximum nesting depth; `0` is unlimited. |
-| `min` | `1` | Only show the TOC when it has at least this many entries. |
-| `collapsible` | `false` | Let readers collapse the TOC. |
+| `min` | `1` | Only show it when it has at least this many entries. |
+| `collapsible` | `false` | Let readers collapse it. |
 | `collapsed` | `false` | Start collapsed (with `collapsible="true"`). |
-| `schema` | `true` | Output schema.org JSON-LD. |
 
-### Examples
-
-```text
-[wp_toc tags="h2,h3,h4" title="In this article"]
-[wp_toc depth="1" min="3"]
-[wp_toc collapsible="true" collapsed="true"]
-[wp_toc title="" schema="false"]
-```
+The same attributes go in `atts` for the automatic table of contents.
 
 ### Leaving a heading out
 
-Give the heading the class `no-toc`, or a `data-no-toc` attribute. In the block editor, add `no-toc` under **Advanced → Additional CSS class(es)**.
+Give the heading the class `no-toc`, or a `data-no-toc` attribute. In the block
+editor, add `no-toc` under **Advanced → Additional CSS class(es)**.
 
 ```html
 <h2 class="no-toc">Not in the table of contents</h2>
@@ -63,7 +128,8 @@ Give the heading the class `no-toc`, or a `data-no-toc` attribute. In the block 
 
 ## Styling
 
-The stylesheet uses the theme's text colour, so it suits light and dark themes. Adjust it with custom properties:
+The stylesheet uses the theme's text colour, so it suits light and dark themes.
+Adjust it with custom properties:
 
 ```css
 .wp-toc {
@@ -76,80 +142,68 @@ The stylesheet uses the theme's text colour, so it suits light and dark themes. 
 }
 ```
 
-Or turn the stylesheet off and write your own:
+Or turn the stylesheet off and style it in the theme's own CSS:
 
 ```php
 add_filter( 'wp_toc_load_css', '__return_false' );
 ```
 
-Use the `wp-toc-*` classes for new CSS. The old `auto-toc-container`, `auto-toc-title` and `auto-toc-list` classes are still output. The full markup and class list are in [SSOT.md](SSOT.md#markup).
+Use the `wp-toc-*` classes for new CSS. The 1.0 classes `auto-toc-container`,
+`auto-toc-title` and `auto-toc-list` are still output. The full markup and class
+list are in [SSOT.md](SSOT.md#markup).
 
 ## Schema.org
 
-After the first TOC in a post, WP TOC outputs JSON-LD like this:
+Every element WP TOC outputs carries schema.org data, with no option to turn it off:
 
-```json
-{
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  "@id": "https://example.com/my-post/#webpage",
-  "url": "https://example.com/my-post/",
-  "hasPart": [
-    {
-      "@type": "WebPageElement",
-      "name": "Installation",
-      "url": "https://example.com/my-post/#installation",
-      "hasPart": [
-        { "@type": "WebPageElement", "name": "Requirements", "url": "https://example.com/my-post/#requirements" }
-      ]
-    }
-  ]
-}
-```
+| Element | schema.org |
+|---|---|
+| The table of contents | `SiteNavigationElement`, with `name` and `isPartOf` the page |
+| Each entry | `WebPageElement` with `name` and `url`, nested through `hasPart` |
+| The page (JSON-LD) | `WebPage` whose `hasPart` lists every section |
 
-The `@id` matches the WebPage node your SEO plugin outputs, so search engines merge the sections into its graph:
+The microdata and the JSON-LD use the same identifiers for each section, so
+search engines read them as one description. The page identifier matches the one
+your SEO plugin uses:
 
 - **Rank Math:** Rank Math's canonical URL + `#webpage`, so a custom canonical is respected.
 - **Yoast SEO:** the page URL.
 - **Neither:** the permalink + `#webpage`.
 
+Headings inside the post get anchors but no schema.org attributes: they sit
+outside any schema.org scope, so attributes there would mean nothing.
+
 ## Rank Math
 
-WP TOC is checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49:
+Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49:
 
-- Rank Math's **Table of Contents** content-analysis check recognizes WP TOC.
-- The schema attaches to Rank Math's WebPage node, as above.
-- The TOC never leaks into Rank Math's auto-generated descriptions, even when Rank Math is set to parse shortcodes.
+- The schema.org data attaches to Rank Math's page data, as above.
+- The table of contents never leaks into Rank Math's auto-generated descriptions.
 - Headings that already have anchors (for example from Rank Math's TOC block) keep them.
+- Rank Math's **Table of Contents** analysis check recognises WP TOC **when it is
+  installed as a plugin**. Rank Math only looks at active plugins, so it can't
+  see WP TOC inside a theme; the check's result doesn't affect the page.
 
-This markup does not produce a rich result. Google's "Jump to" links come from the heading anchors themselves. Turn the markup off per TOC with `schema="false"`, or everywhere with `add_filter( 'wp_toc_schema', '__return_false' );`.
-
-## Hooks
+## For developers
 
 | Filter | Use |
 |---|---|
-| `wp_toc_enabled` | Return `false` to skip a post. |
-| `wp_toc_default_atts` | Change default attributes for every TOC. |
+| `wp_toc_auto_insert` | Settings for the automatic table of contents. |
+| `wp_toc_enabled` | Return `false` to skip a post entirely. |
+| `wp_toc_default_atts` | Default attributes for every table of contents. |
 | `wp_toc_items` | Add, remove or rename entries before they are nested. |
-| `wp_toc_heading_id` | Change how heading ids are generated. |
+| `wp_toc_heading_id` | Change how heading anchors are generated. |
 | `wp_toc_html` | Change the final markup. |
-| `wp_toc_schema` | Change or remove the JSON-LD. |
-| `wp_toc_schema_webpage_id` | Set the `@id` the JSON-LD attaches to. |
+| `wp_toc_schema` | Change the JSON-LD. |
+| `wp_toc_schema_webpage_id` | Set the page identifier the schema.org data attaches to. |
+| `wp_toc_base_url` | Set the folder's URL; return `''` to print the CSS inline. |
 | `wp_toc_load_css` | Return `false` to skip the stylesheet. |
-| `wp_toc_content_filter_priority` | Priority of the content filter (default 99). Add it in a mu-plugin. |
+| `wp_toc_content_filter_priority` | Priority of the content filter (default 99). Add it before loading WP TOC. |
 
-Example: use "Contents" as the default title for every TOC.
+Arguments for every hook, how it works internally, and the release checklist are
+in [SSOT.md](SSOT.md).
 
-```php
-add_filter( 'wp_toc_default_atts', function ( $atts ) {
-	$atts['title'] = 'Contents';
-	return $atts;
-} );
-```
-
-Arguments for every hook are listed in [SSOT.md](SSOT.md#hooks).
-
-## Development
+### Working on WP TOC
 
 ```bash
 composer install
@@ -163,18 +217,21 @@ composer test
 composer phpcs
 ```
 
-The tests run against real WordPress core code (hooks, formatting, shortcodes and the HTML API) without a database. CI runs `php -l`, PHPCS (WordPress Coding Standards and PHPCompatibilityWP) and PHPUnit on PHP 7.4 to 8.4, against WordPress 7.1 and the oldest supported version, 6.5.
+The tests run against real WordPress core code (hooks, formatting, shortcodes
+and the HTML API) without a database. CI runs PHPCS and PHPUnit on PHP 8.4 and
+8.5 against WordPress 7.1 and 6.7, and checks that WP TOC refuses to load on
+PHP 7.4 and 8.3.
 
 ## Documentation
 
-- [SSOT.md](SSOT.md): every fact about the plugin in one place (versions, attributes, markup, hooks, release checklist).
+- [SSOT.md](SSOT.md): every fact about WP TOC in one place (requirements, settings, markup, schema, hooks, release checklist).
 - [UPGRADING.md](UPGRADING.md): what changes when you upgrade.
 - [CHANGELOG.md](CHANGELOG.md): release history.
-- [readme.txt](readme.txt): WordPress.org readme.
+- [readme.txt](readme.txt): WordPress.org readme, for the plugin setup.
 
 ## Credits
 
-Developed and maintained by [Mohd Elfie Nieshaem Juferi](https://github.com/menj): [github.com/menj/wp-toc](https://github.com/menj/wp-toc).
+Developed and maintained by [MENJ](https://github.com/menj): [github.com/menj/wp-toc](https://github.com/menj/wp-toc).
 
 Based on original work by Ikram Hawramani.
 
@@ -182,7 +239,7 @@ Based on original work by Ikram Hawramani.
 
 WP TOC is free software, licensed under the [GNU General Public License v3 or later](https://www.gnu.org/licenses/gpl-3.0.html) (GPL-3.0-or-later). See [LICENSE](LICENSE).
 
-Copyright (C) 2026 Mohd Elfie Nieshaem Juferi
+Copyright (C) 2026 MENJ
 
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 

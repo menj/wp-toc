@@ -2,8 +2,12 @@
 /**
  * Core functionality for WP TOC.
  *
+ * Requires PHP 8.4; wp-toc.php only loads this file on PHP 8.4 or later.
+ *
  * @package WP_TOC
  */
+
+declare(strict_types=1);
 
 defined( 'ABSPATH' ) || exit;
 
@@ -21,41 +25,58 @@ defined( 'ABSPATH' ) || exit;
  *
  * Headings are read and changed with WP_HTML_Tag_Processor, so the rest of
  * the post's markup is left exactly as it was.
+ *
+ * The same code runs as a plugin or loaded from a theme; see context().
  */
 final class WP_TOC {
 
 	/**
 	 * Main shortcode tag.
 	 */
-	const SHORTCODE = 'wp_toc';
+	const string SHORTCODE = 'wp_toc';
 
 	/**
 	 * Legacy shortcode tag, kept so existing posts keep working.
 	 */
-	const LEGACY_SHORTCODE = 'auto_toc';
+	const string LEGACY_SHORTCODE = 'auto_toc';
 
 	/**
 	 * Stylesheet handle.
 	 */
-	const STYLE_HANDLE = 'wp-toc';
+	const string STYLE_HANDLE = 'wp-toc';
 
 	/**
 	 * Matches a placeholder, plus a <p> wrapper around it when there is one.
 	 * Group 2 holds the hex-encoded JSON attributes.
 	 */
-	const PLACEHOLDER_PATTERN = '#(<p>\s*)?<!--wp-toc:([0-9a-f]*)-->(?(1)\s*</p>)#';
+	const string PLACEHOLDER_PATTERN = '#(<p>\s*)?<!--wp-toc:([0-9a-f]*)-->(?(1)\s*</p>)#';
 
 	/**
 	 * Placeholder prefix, used for a cheap check before running the regex.
 	 */
-	const PLACEHOLDER_PREFIX = '<!--wp-toc:';
+	const string PLACEHOLDER_PREFIX = '<!--wp-toc:';
+
+	/**
+	 * Context: loaded as a plugin.
+	 */
+	const string CONTEXT_PLUGIN = 'plugin';
+
+	/**
+	 * Context: loaded from a theme (or anywhere outside the plugin directories).
+	 */
+	const string CONTEXT_THEME = 'theme';
+
+	/**
+	 * Path of the stylesheet, relative to the WP TOC folder.
+	 */
+	const string STYLE_PATH = 'assets/css/wp-toc.css';
 
 	/**
 	 * Number of tables of contents rendered on this request, for unique title ids.
 	 *
 	 * @var int
 	 */
-	private static $toc_count = 0;
+	private static int $toc_count = 0;
 
 	/**
 	 * Registers hooks.
@@ -63,10 +84,21 @@ final class WP_TOC {
 	 * @return void
 	 */
 	public static function init(): void {
-		add_action( 'init', array( __CLASS__, 'load_textdomain' ) );
-		add_action( 'init', array( __CLASS__, 'register_shortcodes' ) );
+		// A theme may load WP TOC after init has already run; register straight away then.
+		if ( did_action( 'init' ) ) {
+			self::load_textdomain();
+			self::register_shortcodes();
+		} else {
+			add_action( 'init', array( __CLASS__, 'load_textdomain' ) );
+			add_action( 'init', array( __CLASS__, 'register_shortcodes' ) );
+		}
+
 		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
-		add_filter( 'rank_math/researches/toc_plugins', array( __CLASS__, 'register_with_rank_math' ) );
+
+		// Rank Math only recognizes TOC tools that are active plugins.
+		if ( self::CONTEXT_PLUGIN === self::context() ) {
+			add_filter( 'rank_math/researches/toc_plugins', array( __CLASS__, 'register_with_rank_math' ) );
+		}
 
 		/**
 		 * Filters the priority of the the_content filter that builds the TOC.
@@ -85,7 +117,108 @@ final class WP_TOC {
 	 * @return void
 	 */
 	public static function load_textdomain(): void {
-		load_plugin_textdomain( 'wp-toc', false, dirname( plugin_basename( WP_TOC_FILE ) ) . '/languages' );
+		if ( self::CONTEXT_PLUGIN === self::context() ) {
+			load_plugin_textdomain( 'wp-toc', false, dirname( plugin_basename( WP_TOC_FILE ) ) . '/languages' );
+			return;
+		}
+
+		$mofile = dirname( WP_TOC_FILE ) . '/languages/wp-toc-' . determine_locale() . '.mo';
+		if ( is_readable( $mofile ) ) {
+			load_textdomain( 'wp-toc', $mofile );
+		}
+	}
+
+	/**
+	 * How WP TOC was loaded: as a plugin, or from a theme.
+	 *
+	 * @return string self::CONTEXT_PLUGIN or self::CONTEXT_THEME.
+	 */
+	public static function context(): string {
+		return self::context_for( WP_TOC_FILE );
+	}
+
+	/**
+	 * Works out the context for a given main-file path.
+	 *
+	 * Anything inside the plugins or must-use plugins directory is a plugin;
+	 * anything else (a theme, or a custom location) is treated as theme code.
+	 *
+	 * @param string $file Path of wp-toc.php.
+	 * @return string
+	 */
+	public static function context_for( string $file ): string {
+		$file = wp_normalize_path( $file );
+
+		$in_plugin_dir = array_any(
+			array( 'WP_PLUGIN_DIR', 'WPMU_PLUGIN_DIR' ),
+			static fn( string $constant ): bool => defined( $constant )
+				&& str_starts_with( $file, trailingslashit( wp_normalize_path( (string) constant( $constant ) ) ) )
+		);
+
+		return $in_plugin_dir ? self::CONTEXT_PLUGIN : self::CONTEXT_THEME;
+	}
+
+	/**
+	 * Base URL of the WP TOC folder, with a trailing slash.
+	 *
+	 * Order: the WP_TOC_URL constant (define it before loading WP TOC for
+	 * unusual setups), the plugin URL, the child theme, the parent theme, then
+	 * wp-content. Empty string when the folder is somewhere else.
+	 *
+	 * @param string $file Path of wp-toc.php.
+	 * @return string
+	 */
+	public static function base_url_for( string $file ): string {
+		if ( defined( 'WP_TOC_URL' ) && '' !== (string) WP_TOC_URL ) {
+			$url = trailingslashit( (string) WP_TOC_URL );
+		} elseif ( self::CONTEXT_PLUGIN === self::context_for( $file ) ) {
+			$url = trailingslashit( plugins_url( '', $file ) );
+		} else {
+			$url = self::url_from_roots(
+				trailingslashit( wp_normalize_path( dirname( $file ) ) ),
+				array(
+					array( get_stylesheet_directory(), get_stylesheet_directory_uri() ),
+					array( get_template_directory(), get_template_directory_uri() ),
+					array( WP_CONTENT_DIR, content_url() ),
+				)
+			);
+		}
+
+		/**
+		 * Filters the base URL of the WP TOC folder (used for the stylesheet).
+		 *
+		 * Return an empty string to print the CSS inline instead.
+		 *
+		 * @param string $url  Base URL with a trailing slash, or empty.
+		 * @param string $file Path of wp-toc.php.
+		 */
+		return (string) apply_filters( 'wp_toc_base_url', $url, $file );
+	}
+
+	/**
+	 * Maps a directory to a URL using the first root that contains it.
+	 *
+	 * @param string $dir   Normalized directory with a trailing slash.
+	 * @param array  $roots List of array( root directory, root URL ).
+	 * @return string URL with a trailing slash, or empty string.
+	 */
+	private static function url_from_roots( string $dir, array $roots ): string {
+		$normalize = static fn( string $root_dir ): string => trailingslashit( wp_normalize_path( $root_dir ) );
+
+		$match = array_find(
+			$roots,
+			static fn( array $root ): bool => '' !== (string) $root[0]
+				&& '' !== (string) $root[1]
+				&& str_starts_with( $dir, $normalize( (string) $root[0] ) )
+		);
+
+		if ( null === $match ) {
+			return '';
+		}
+
+		[ $root_dir, $root_url ] = $match;
+
+		return trailingslashit( (string) $root_url ) . substr( $dir, strlen( $normalize( (string) $root_dir ) ) );
 	}
 
 	/**
@@ -113,7 +246,7 @@ final class WP_TOC {
 	}
 
 	/**
-	 * Registers the stylesheet and enqueues it on singular views that use the shortcode.
+	 * Registers the stylesheet and enqueues it on singular views that will show a TOC.
 	 *
 	 * @return void
 	 */
@@ -125,7 +258,14 @@ final class WP_TOC {
 		}
 
 		$post = get_post();
-		if ( $post && ( has_shortcode( $post->post_content, self::SHORTCODE ) || has_shortcode( $post->post_content, self::LEGACY_SHORTCODE ) ) ) {
+		if ( ! $post ) {
+			return;
+		}
+
+		$uses_shortcode = has_shortcode( $post->post_content, self::SHORTCODE ) || has_shortcode( $post->post_content, self::LEGACY_SHORTCODE );
+
+		// Load the CSS in <head> when a TOC is likely; insert_auto_placeholder() and the shortcode enqueue it late otherwise.
+		if ( $uses_shortcode || null !== self::auto_insert_config( (int) $post->ID ) ) {
 			self::enqueue_style();
 		}
 	}
@@ -159,15 +299,25 @@ final class WP_TOC {
 	/**
 	 * Registers the stylesheet.
 	 *
+	 * When the folder has no public URL (see base_url_for()), the handle is
+	 * registered without a file and the CSS is added inline.
+	 *
 	 * @return void
 	 */
 	private static function register_style(): void {
-		wp_register_style(
-			self::STYLE_HANDLE,
-			plugins_url( 'assets/css/wp-toc.css', WP_TOC_FILE ),
-			array(),
-			WP_TOC_VERSION
-		);
+		$base_url = self::base_url_for( WP_TOC_FILE );
+
+		if ( '' !== $base_url ) {
+			wp_register_style( self::STYLE_HANDLE, $base_url . self::STYLE_PATH, array(), WP_TOC_VERSION );
+			return;
+		}
+
+		wp_register_style( self::STYLE_HANDLE, false, array(), WP_TOC_VERSION );
+
+		$css = (string) file_get_contents( dirname( WP_TOC_FILE ) . '/' . self::STYLE_PATH ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local file.
+		if ( '' !== $css ) {
+			wp_add_inline_style( self::STYLE_HANDLE, $css );
+		}
 	}
 
 	/**
@@ -183,7 +333,6 @@ final class WP_TOC {
 			'min'         => '1',
 			'collapsible' => 'false',
 			'collapsed'   => 'false',
-			'schema'      => 'true',
 		);
 
 		/**
@@ -208,8 +357,188 @@ final class WP_TOC {
 			self::enqueue_style();
 		}
 
+		return self::placeholder( $atts );
+	}
+
+	/**
+	 * Builds the placeholder that filter_content() replaces with a TOC.
+	 *
+	 * @param array $atts Raw attributes.
+	 * @return string
+	 */
+	private static function placeholder( array $atts ): string {
 		// Hex keeps the payload free of "--" and ">", which would end the comment early.
 		return self::PLACEHOLDER_PREFIX . bin2hex( (string) wp_json_encode( $atts ) ) . '-->';
+	}
+
+	/**
+	 * Default settings for the automatic table of contents.
+	 *
+	 * @return array{enabled: bool, post_types: string[], position: string, atts: array}
+	 */
+	public static function auto_insert_defaults(): array {
+		return array(
+			'enabled'    => true,
+			'post_types' => array( 'post', 'page' ),
+			'position'   => 'before_first_heading',
+			'atts'       => array( 'min' => '3' ),
+		);
+	}
+
+	/**
+	 * Automatic-insertion settings for a post, or null when they say no.
+	 *
+	 * Checks only the settings (and the post type), not the request; see
+	 * auto_insert_settings() for the full check.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return array|null
+	 */
+	private static function auto_insert_config( int $post_id ): ?array {
+		$defaults = self::auto_insert_defaults();
+
+		/**
+		 * Filters the automatic table of contents.
+		 *
+		 * WP TOC adds a table of contents to singular posts by itself, with no
+		 * shortcode needed. A [wp_toc] shortcode in a post overrides it.
+		 *
+		 * @param array $settings {
+		 *     @type bool     $enabled    Default true. False turns automatic insertion off.
+		 *     @type string[] $post_types Default array( 'post', 'page' ).
+		 *     @type string   $position   'before_first_heading' (default), 'after_first_paragraph' or 'top'.
+		 *     @type array    $atts       Shortcode attributes for the automatic TOC. Default array( 'min' => '3' ).
+		 * }
+		 * @param int   $post_id Post ID.
+		 */
+		$settings = apply_filters( 'wp_toc_auto_insert', $defaults, $post_id );
+		$settings = array_merge( $defaults, is_array( $settings ) ? $settings : array() );
+
+		if ( ! self::to_bool( $settings['enabled'] ) || $post_id <= 0 ) {
+			return null;
+		}
+
+		$post_types = array_map( 'strval', (array) $settings['post_types'] );
+		if ( ! in_array( (string) get_post_type( $post_id ), $post_types, true ) ) {
+			return null;
+		}
+
+		$settings['post_types'] = $post_types;
+		$settings['atts']       = (array) $settings['atts'];
+
+		return $settings;
+	}
+
+	/**
+	 * Settings for the automatic TOC when it applies to the content being filtered.
+	 *
+	 * Only the main post of a singular front-end view gets one: not feeds,
+	 * admin screens, excerpts of other posts, or password-protected posts.
+	 *
+	 * @param int $post_id Post whose content is being filtered.
+	 * @return array|null
+	 */
+	private static function auto_insert_settings( int $post_id ): ?array {
+		if (
+			$post_id <= 0
+			|| is_admin()
+			|| is_feed()
+			|| ! is_singular()
+			|| ! in_the_loop()
+			|| ! is_main_query()
+			|| (int) get_queried_object_id() !== $post_id
+			|| post_password_required( $post_id )
+		) {
+			return null;
+		}
+
+		return self::auto_insert_config( $post_id );
+	}
+
+	/**
+	 * Inserts the automatic TOC's placeholder, if the post has enough headings.
+	 *
+	 * @param string $content  Content with heading ids already added.
+	 * @param array  $items    TOC entries.
+	 * @param array  $settings Settings from auto_insert_settings().
+	 * @return string
+	 */
+	private static function insert_auto_placeholder( string $content, array $items, array $settings ): string {
+		$raw_atts = array_merge( self::default_atts(), $settings['atts'] );
+		$atts     = self::sanitize_atts( $raw_atts );
+		$tree     = self::build_tree( $items, $atts );
+
+		if ( array() === $tree || self::count_nodes( $tree ) < $atts['min'] ) {
+			return $content;
+		}
+
+		$offset = match ( (string) $settings['position'] ) {
+			'top'                   => 0,
+			'after_first_paragraph' => self::first_paragraph_end( $content ),
+			default                 => self::heading_start( $content, $tree[0]['id'] ),
+		} ?? 0;
+
+		self::enqueue_style();
+
+		return substr( $content, 0, $offset ) . self::placeholder( $raw_atts ) . substr( $content, $offset );
+	}
+
+	/**
+	 * Byte offset where the heading with the given id starts.
+	 *
+	 * @param string $html HTML.
+	 * @param string $id   Heading id.
+	 * @return int|null
+	 */
+	private static function heading_start( string $html, string $id ): ?int {
+		$processor      = new WP_TOC_HTML_Processor( $html );
+		$template_depth = 0;
+
+		while ( $processor->next_tag( array( 'tag_closers' => 'visit' ) ) ) {
+			$tag = (string) $processor->get_tag();
+
+			if ( 'TEMPLATE' === $tag ) {
+				$template_depth = max( 0, $template_depth + ( $processor->is_tag_closer() ? -1 : 1 ) );
+				continue;
+			}
+
+			if ( $template_depth > 0 || $processor->is_tag_closer() || ! preg_match( '/^H[1-6]$/', $tag ) ) {
+				continue;
+			}
+
+			$heading_id = $processor->get_attribute( 'id' );
+			if ( is_string( $heading_id ) && trim( $heading_id ) === $id && $processor->set_bookmark( 'wp-toc' ) ) {
+				return $processor->get_bookmark_offsets( 'wp-toc' )['start'] ?? null;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Byte offset just after the first closing </p> outside a <template>.
+	 *
+	 * @param string $html HTML.
+	 * @return int|null
+	 */
+	private static function first_paragraph_end( string $html ): ?int {
+		$processor      = new WP_TOC_HTML_Processor( $html );
+		$template_depth = 0;
+
+		while ( $processor->next_tag( array( 'tag_closers' => 'visit' ) ) ) {
+			$tag = (string) $processor->get_tag();
+
+			if ( 'TEMPLATE' === $tag ) {
+				$template_depth = max( 0, $template_depth + ( $processor->is_tag_closer() ? -1 : 1 ) );
+				continue;
+			}
+
+			if ( 0 === $template_depth && 'P' === $tag && $processor->is_tag_closer() && $processor->set_bookmark( 'wp-toc' ) ) {
+				return $processor->get_bookmark_offsets( 'wp-toc' )['end'] ?? null;
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -223,7 +552,6 @@ final class WP_TOC {
 	 *     @type int    $min         Minimum number of entries before the TOC is shown.
 	 *     @type bool   $collapsible Whether the TOC can be collapsed.
 	 *     @type bool   $collapsed   Whether a collapsible TOC starts collapsed.
-	 *     @type bool   $schema      Whether to output schema.org JSON-LD.
 	 * }
 	 */
 	public static function sanitize_atts( $atts ): array {
@@ -245,7 +573,6 @@ final class WP_TOC {
 			'min'         => max( 1, (int) $atts['min'] ),
 			'collapsible' => self::to_bool( $atts['collapsible'] ),
 			'collapsed'   => self::to_bool( $atts['collapsed'] ),
-			'schema'      => self::to_bool( $atts['schema'] ),
 		);
 	}
 
@@ -287,17 +614,26 @@ final class WP_TOC {
 	}
 
 	/**
-	 * The_content filter: adds heading ids and replaces placeholders with the TOC.
+	 * The_content filter: adds heading ids, inserts the automatic TOC where it
+	 * applies, and replaces placeholders with the TOC.
 	 *
 	 * @param string $content Post content.
 	 * @return string
 	 */
 	public static function filter_content( $content ) {
-		if ( ! is_string( $content ) || false === strpos( $content, self::PLACEHOLDER_PREFIX ) ) {
+		if ( ! is_string( $content ) ) {
 			return $content;
 		}
 
-		$post_id = (int) get_the_ID();
+		$post_id         = (int) get_the_ID();
+		$has_placeholder = str_contains( $content, self::PLACEHOLDER_PREFIX );
+
+		// A [wp_toc] shortcode in the post places the TOC by hand and replaces the automatic one.
+		$auto = $has_placeholder ? null : self::auto_insert_settings( $post_id );
+
+		if ( ! $has_placeholder && null === $auto ) {
+			return $content;
+		}
 
 		/**
 		 * Filters whether WP TOC builds a table of contents for this content.
@@ -308,7 +644,7 @@ final class WP_TOC {
 		 * @param int  $post_id Current post ID, 0 if none.
 		 */
 		if ( ! apply_filters( 'wp_toc_enabled', true, $post_id ) || ! self::html_api_available() ) {
-			return (string) preg_replace( self::PLACEHOLDER_PATTERN, '', $content );
+			return $has_placeholder ? (string) preg_replace( self::PLACEHOLDER_PATTERN, '', $content ) : $content;
 		}
 
 		$result  = self::process_headings( $content );
@@ -324,6 +660,13 @@ final class WP_TOC {
 		$used_ids    = $result['ids'];
 		$schema_done = false;
 
+		if ( null !== $auto ) {
+			$content = self::insert_auto_placeholder( $content, $items, $auto );
+			if ( ! str_contains( $content, self::PLACEHOLDER_PREFIX ) ) {
+				return $content;
+			}
+		}
+
 		return (string) preg_replace_callback(
 			self::PLACEHOLDER_PATTERN,
 			static function ( $matches ) use ( $items, &$used_ids, &$schema_done, $post_id ) {
@@ -336,7 +679,8 @@ final class WP_TOC {
 
 				$html = self::render_html( $tree, $atts, $used_ids, $post_id );
 
-				if ( $atts['schema'] && ! $schema_done ) {
+				// One JSON-LD block per post; every TOC also carries microdata.
+				if ( ! $schema_done ) {
 					$html       .= self::render_schema( $tree, $post_id );
 					$schema_done = true;
 				}
@@ -630,21 +974,33 @@ final class WP_TOC {
 	public static function render_html( array $tree, array $atts, array &$used_ids, int $post_id = 0 ): string {
 		++self::$toc_count;
 
-		$classes = 'wp-toc auto-toc-container' . ( $atts['collapsible'] ? ' wp-toc--collapsible' : '' );
-		$list    = self::render_list( $tree, true );
+		$classes   = 'wp-toc auto-toc-container' . ( $atts['collapsible'] ? ' wp-toc--collapsible' : '' );
+		$permalink = $post_id > 0 ? (string) get_permalink( $post_id ) : '';
+		$list      = self::render_list( $tree, true, $permalink );
+
+		// schema.org microdata: the TOC is a SiteNavigationElement (as in Rank Math's TOC block),
+		// named by its title, part of the page's WebPage node, with one WebPageElement per section.
+		$microdata = ' itemscope itemtype="https://schema.org/SiteNavigationElement"';
+		$meta      = '';
+		if ( '' !== $permalink ) {
+			$microdata .= ' itemid="' . esc_url( $permalink . '#wp-toc-' . self::$toc_count ) . '"';
+			$meta      .= '<link itemprop="isPartOf" href="' . esc_url( self::schema_webpage_id( $permalink, $post_id ) ) . '">';
+		}
 
 		if ( '' !== $atts['title'] ) {
 			$title_id = self::unique_id( 'wp-toc-title-' . self::$toc_count, $used_ids );
 			$label    = 'aria-labelledby="' . esc_attr( $title_id ) . '"';
-			$title    = '<span class="wp-toc-title auto-toc-title" id="' . esc_attr( $title_id ) . '">' . esc_html( $atts['title'] ) . '</span>';
+			$title    = '<span class="wp-toc-title auto-toc-title" id="' . esc_attr( $title_id ) . '" itemprop="name">' . esc_html( $atts['title'] ) . '</span>';
 		} else {
 			$label = 'aria-label="' . esc_attr__( 'Table of Contents', 'wp-toc' ) . '"';
 			$title = '';
+			$meta .= '<meta itemprop="name" content="' . esc_attr__( 'Table of Contents', 'wp-toc' ) . '">';
 		}
 
-		$html = '<nav class="' . esc_attr( $classes ) . '" ' . $label . '>';
+		$html = '<nav class="' . esc_attr( $classes ) . '" ' . $label . $microdata . '>' . $meta;
 
 		if ( $atts['collapsible'] ) {
+			// Without a title, the visible summary text is decorative; the name comes from the <meta> above.
 			$summary = '' !== $title ? $title : '<span class="wp-toc-title auto-toc-title">' . esc_html__( 'Table of Contents', 'wp-toc' ) . '</span>';
 			$html   .= '<details class="wp-toc-details"' . ( $atts['collapsed'] ? '' : ' open' ) . '>';
 			$html   .= '<summary class="wp-toc-summary">' . $summary . '</summary>';
@@ -669,20 +1025,37 @@ final class WP_TOC {
 	/**
 	 * Renders one level of the list.
 	 *
-	 * @param array $nodes   Nodes at this level.
-	 * @param bool  $is_root Whether this is the top level.
+	 * @param array  $nodes     Nodes at this level.
+	 * @param bool   $is_root   Whether this is the top level.
+	 * @param string $permalink Post URL, for microdata itemids; empty when there is no post.
 	 * @return string
 	 */
-	private static function render_list( array $nodes, bool $is_root ): string {
+	private static function render_list( array $nodes, bool $is_root, string $permalink ): string {
 		$html = '<ul class="' . ( $is_root ? 'wp-toc-list auto-toc-list' : 'wp-toc-sublist' ) . '">';
 		foreach ( $nodes as $node ) {
-			$html .= '<li><a href="#' . esc_attr( $node['id'] ) . '">' . esc_html( $node['text'] ) . '</a>';
+			// Each entry is a WebPageElement (a section of the page). Its itemid matches the
+			// section's @id in the JSON-LD, so both descriptions merge into one node.
+			$itemid = '' !== $permalink ? ' itemid="' . esc_url( self::section_url( $permalink, $node['id'] ) ) . '"' : '';
+
+			$html .= '<li itemprop="hasPart" itemscope itemtype="https://schema.org/WebPageElement"' . $itemid . '>';
+			$html .= '<a href="#' . esc_attr( $node['id'] ) . '" itemprop="url"><span itemprop="name">' . esc_html( $node['text'] ) . '</span></a>';
 			if ( $node['children'] ) {
-				$html .= self::render_list( $node['children'], false );
+				$html .= self::render_list( $node['children'], false, $permalink );
 			}
 			$html .= '</li>';
 		}
 		return $html . '</ul>';
+	}
+
+	/**
+	 * Absolute URL of a section: the permalink plus the percent-encoded heading id.
+	 *
+	 * @param string $permalink Post URL.
+	 * @param string $id        Heading id.
+	 * @return string
+	 */
+	private static function section_url( string $permalink, string $id ): string {
+		return $permalink . '#' . rawurlencode( $id );
 	}
 
 	/**
@@ -804,10 +1177,12 @@ final class WP_TOC {
 	private static function schema_parts( array $nodes, string $permalink ): array {
 		$parts = array();
 		foreach ( $nodes as $node ) {
+			$url  = self::section_url( $permalink, $node['id'] );
 			$part = array(
 				'@type' => 'WebPageElement',
+				'@id'   => $url,
 				'name'  => $node['text'],
-				'url'   => $permalink . '#' . rawurlencode( $node['id'] ),
+				'url'   => $url,
 			);
 			if ( $node['children'] ) {
 				$part['hasPart'] = self::schema_parts( $node['children'], $permalink );
