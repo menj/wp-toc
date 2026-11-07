@@ -137,7 +137,14 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 		$this->assertStringContainsString( '<h2 id="cafe-creme">', $out );
 		$this->assertStringContainsString( '>Café &amp; Crème</a>', $out );
 		$this->assertStringContainsString( '>مرحبا بالعالم</a>', $out );
-		$this->assertMatchesRegularExpression( '#<h2 id="(%[0-9a-f]{2})+-(%[0-9a-f]{2})+">مرحبا#', $out );
+		$this->assertStringContainsString( '<h2 id="مرحبا-بالعالم">مرحبا بالعالم</h2>', $out, 'Non-Latin ids are readable, not percent-encoded' );
+		$this->assertStringContainsString( '<a href="#مرحبا-بالعالم">', $out );
+	}
+
+	public function test_headings_inside_template_are_ignored() {
+		$out = $this->render( '[wp_toc]<h2>Shown</h2><template><h2>Hidden</h2><template><h3>Nested</h3></template><h2 id="t">T</h2></template><h2>After</h2>' );
+		$this->assertSame( array( 'Shown' => array(), 'After' => array() ), $this->toc_structure( $out ) );
+		$this->assertStringContainsString( '<template><h2>Hidden</h2><template><h3>Nested</h3></template><h2 id="t">T</h2></template><h2 id="after">After</h2>', $out );
 	}
 
 	public function test_heading_text_is_escaped_in_toc() {
@@ -382,6 +389,13 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 		$this->assertStringContainsString( '\\u003C/script\\u003E', $m[1] );
 		$this->assertStringContainsString( 'ü', $m[1], 'Unicode stays readable' );
 		$this->assertSame( '</script><script>alert(1)</script> & ü', $this->json_ld( $out )[0]['hasPart'][0]['name'] );
+	}
+
+	public function test_schema_urls_percent_encode_ids() {
+		$out   = $this->render( '[wp_toc]<h2>مرحبا</h2><h2 id="50%off">Sale</h2>' );
+		$parts = $this->json_ld( $out )[0]['hasPart'];
+		$this->assertSame( 'https://example.com/post-42/#' . rawurlencode( 'مرحبا' ), $parts[0]['url'] );
+		$this->assertSame( 'https://example.com/post-42/#50%25off', $parts[1]['url'], 'A literal % is encoded so the fragment decodes back to the id' );
 	}
 
 	public function test_schema_can_be_disabled() {
