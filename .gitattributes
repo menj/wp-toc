@@ -1,0 +1,11 @@
+# Leave development files out of release archives (git archive / GitHub zip).
+/.github            export-ignore
+/.cache             export-ignore
+/bin                export-ignore
+/tests              export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/composer.json      export-ignore
+/composer.lock      export-ignore
+/phpcs.xml.dist     export-ignore
+/phpunit.xml.dist   export-ignore
