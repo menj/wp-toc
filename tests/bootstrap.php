@@ -14,6 +14,9 @@ require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 
 define( 'ABSPATH', dirname( __DIR__ ) . '/.cache/wordpress/' );
 define( 'WPINC', 'wp-includes' );
+// plugin_basename() resolves paths against these.
+define( 'WP_PLUGIN_DIR', dirname( __DIR__, 2 ) );
+define( 'WPMU_PLUGIN_DIR', dirname( __DIR__, 2 ) . '/mu-plugins' );
 
 if ( ! is_dir( ABSPATH . WPINC ) ) {
 	fwrite( STDERR, "WordPress core not found. Run bin/install-wp-core.sh (composer test does this).\n" );
@@ -40,7 +43,8 @@ $wp_toc_core_files = array(
 );
 // PHPUnit includes this file inside a function, so file-level variables in
 // core files would otherwise be local instead of global.
-global $shortcode_tags, $html5_named_character_references;
+global $shortcode_tags, $html5_named_character_references, $wp_plugin_paths;
+$wp_plugin_paths = array(); // Set by wp-settings.php; read by plugin_basename().
 
 foreach ( $wp_toc_core_files as $wp_toc_file ) {
 	if ( file_exists( ABSPATH . WPINC . '/' . $wp_toc_file ) ) {
