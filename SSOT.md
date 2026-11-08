@@ -306,5 +306,5 @@ needed at runtime; the rest is excluded from release archives (`.gitattributes`)
 3. Update `Stable tag` in `readme.txt`, and its changelog and upgrade notice.
 4. Add the release to `CHANGELOG.md` (date as D-Month-YYYY), and to `UPGRADING.md` if anything changes for users.
 5. Regenerate `languages/wp-toc.pot` if strings changed.
-6. Run `composer test` and `composer phpcs` on PHP 8.4+, and `composer test-guard` on an older PHP.
+6. Run `composer test` and `composer phpcs` on PHP 8.4+. Run `php tests/php-version-guard.php` on an older PHP.
 7. Tag the release `vX.Y.Z`.

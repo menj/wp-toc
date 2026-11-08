@@ -10,6 +10,11 @@
  * @package WP_TOC
  */
 
+if ( PHP_VERSION_ID < 80400 ) {
+	fwrite( STDERR, "WP TOC tests require PHP 8.4 or later.\n" );
+	exit( 1 );
+}
+
 require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 
 define( 'ABSPATH', dirname( __DIR__ ) . '/.cache/wordpress/' );
@@ -61,24 +66,7 @@ add_filter( 'the_content', 'do_shortcode', 11 ); // AFTER wpautop().
 
 define( 'WP_CONTENT_DIR', '/srv/site/wp-content' );
 
-if ( PHP_VERSION_ID >= 80400 ) {
-	require_once dirname( __DIR__ ) . '/wp-toc.php';
-} else {
-	/*
-	 * Local convenience only: WP TOC requires PHP 8.4 and wp-toc.php refuses to
-	 * load below it. To run the suite on an older PHP during development, load
-	 * the classes directly with stand-ins for the PHP 8.4 array functions.
-	 * CI runs the suite on PHP 8.4+ through wp-toc.php, and checks the version
-	 * guard separately with tests/php-version-guard.php.
-	 */
-	require_once __DIR__ . '/polyfills-php84.php';
-	define( 'WP_TOC_VERSION', '1.1.0' );
-	define( 'WP_TOC_FILE', dirname( __DIR__ ) . '/wp-toc.php' );
-	define( 'WP_TOC_DIR', dirname( __DIR__ ) );
-	require_once dirname( __DIR__ ) . '/includes/class-wp-toc-html-processor.php';
-	require_once dirname( __DIR__ ) . '/includes/class-wp-toc.php';
-	WP_TOC::init();
-}
+require_once dirname( __DIR__ ) . '/wp-toc.php';
 
 WP_TOC::register_shortcodes();
 
