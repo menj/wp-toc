@@ -87,6 +87,7 @@ class Test_WP_TOC_Docs extends TestCase {
 
 		$composer = json_decode( $this->file( 'composer.json' ), true );
 		$this->assertSame( ">=$php", $composer['require']['php'] );
+		$this->assertArrayNotHasKey( 'php', $composer['config']['platform'] ?? array() );
 	}
 
 	public function test_identity_and_license_match_everywhere() {

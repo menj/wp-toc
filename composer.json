@@ -22,10 +22,7 @@
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
         },
-        "sort-packages": true,
-        "platform": {
-            "php": "8.4.0"
-        }
+        "sort-packages": true
     },
     "scripts": {
         "install-wp": "bin/install-wp-core.sh",
