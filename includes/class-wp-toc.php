@@ -72,6 +72,79 @@ final class WP_TOC {
 	const string STYLE_PATH = 'assets/css/wp-toc.css';
 
 	/**
+	 * Longest generated heading id, in characters. Longer slugs are cut at a word boundary.
+	 */
+	const int MAX_ID_LENGTH = 72;
+
+	/**
+	 * Ids WordPress core and themes commonly use for page landmarks and links
+	 * (skip links, comments, navigation). A heading must never take one of
+	 * these, or theme links such as "Skip to content" would jump to it.
+	 */
+	const array RESERVED_IDS = array(
+		'content',
+		'main',
+		'primary',
+		'secondary',
+		'page',
+		'site',
+		'top',
+		'masthead',
+		'colophon',
+		'header',
+		'footer',
+		'site-header',
+		'site-footer',
+		'site-content',
+		'main-content',
+		'content-area',
+		'site-navigation',
+		'navigation',
+		'primary-menu',
+		'menu',
+		'nav',
+		'sidebar',
+		'search',
+		'searchform',
+		'breadcrumbs',
+		'comments',
+		'respond',
+		'reply-title',
+		'commentform',
+		'comment',
+		'cancel-comment-reply-link',
+		'wpadminbar',
+		'more',
+	);
+
+	/**
+	 * Classes of other table-of-contents tools (Rank Math, Yoast SEO, core and
+	 * popular plugins). When one is already in the post, no automatic TOC is added.
+	 */
+	const array OTHER_TOC_MARKERS = array(
+		'wp-block-rank-math-toc-block',
+		'yoast-table-of-contents',
+		'wp-block-table-of-contents',
+		'ez-toc-container',
+		'lwptoc',
+		'toc_container',
+		'kb-table-of-content',
+		'wp-block-uagb-table-of-contents',
+		'ub_table-of-contents',
+		'simpletoc',
+	);
+
+	/**
+	 * Elements whose content the tag processor skips as one token (no separate closer).
+	 */
+	const array ATOMIC_ELEMENTS = array( 'SCRIPT', 'STYLE', 'TEXTAREA', 'TITLE', 'XMP', 'IFRAME', 'NOEMBED', 'NOFRAMES', 'PLAINTEXT' );
+
+	/**
+	 * Void elements: never have content or a closer.
+	 */
+	const array VOID_ELEMENTS = array( 'AREA', 'BASE', 'BR', 'COL', 'EMBED', 'HR', 'IMG', 'INPUT', 'KEYGEN', 'LINK', 'META', 'PARAM', 'SOURCE', 'TRACK', 'WBR' );
+
+	/**
 	 * Number of tables of contents rendered on this request, for unique title ids.
 	 *
 	 * @var int
@@ -433,7 +506,9 @@ final class WP_TOC {
 	 * Settings for the automatic TOC when it applies to the content being filtered.
 	 *
 	 * Only the main post of a singular front-end view gets one: not feeds,
-	 * admin screens, excerpts of other posts, or password-protected posts.
+	 * admin screens, other posts, password-protected posts, or excerpts (an
+	 * excerpt built from the content would otherwise start with the TOC's text,
+	 * and SEO and sharing tools reuse excerpts as descriptions).
 	 *
 	 * @param int $post_id Post whose content is being filtered.
 	 * @return array|null
@@ -448,6 +523,7 @@ final class WP_TOC {
 			|| ! is_main_query()
 			|| (int) get_queried_object_id() !== $post_id
 			|| post_password_required( $post_id )
+			|| doing_filter( 'get_the_excerpt' )
 		) {
 			return null;
 		}
@@ -464,6 +540,10 @@ final class WP_TOC {
 	 * @return string
 	 */
 	private static function insert_auto_placeholder( string $content, array $items, array $settings ): string {
+		if ( self::has_other_toc( $content ) ) {
+			return $content;
+		}
+
 		$raw_atts = array_merge( self::default_atts(), $settings['atts'] );
 		$atts     = self::sanitize_atts( $raw_atts );
 		$tree     = self::build_tree( $items, $atts );
@@ -484,57 +564,116 @@ final class WP_TOC {
 	}
 
 	/**
-	 * Byte offset where the heading with the given id starts.
+	 * Whether the content already has another table of contents (Rank Math,
+	 * Yoast SEO, core or a popular plugin), so the automatic one is not added.
+	 *
+	 * @param string $content Content.
+	 * @return bool
+	 */
+	private static function has_other_toc( string $content ): bool {
+		/**
+		 * Filters the class names that identify other table-of-contents tools.
+		 *
+		 * @param string[] $markers Class names.
+		 */
+		$markers = (array) apply_filters( 'wp_toc_other_toc_markers', self::OTHER_TOC_MARKERS );
+
+		return array_any(
+			$markers,
+			static fn( $marker ): bool => '' !== (string) $marker && str_contains( $content, (string) $marker )
+		);
+	}
+
+	/**
+	 * Byte offset to insert the automatic TOC before the heading with the given id.
+	 *
+	 * The TOC is placed before the top-level element that contains the heading,
+	 * never inside another element (an accordion's <summary>, a table cell, a
+	 * link), where it would be hidden or make invalid HTML.
 	 *
 	 * @param string $html HTML.
 	 * @param string $id   Heading id.
 	 * @return int|null
 	 */
 	private static function heading_start( string $html, string $id ): ?int {
-		$processor      = new WP_TOC_HTML_Processor( $html );
-		$template_depth = 0;
-
-		while ( $processor->next_tag( array( 'tag_closers' => 'visit' ) ) ) {
-			$tag = (string) $processor->get_tag();
-
-			if ( 'TEMPLATE' === $tag ) {
-				$template_depth = max( 0, $template_depth + ( $processor->is_tag_closer() ? -1 : 1 ) );
-				continue;
-			}
-
-			if ( $template_depth > 0 || $processor->is_tag_closer() || ! preg_match( '/^H[1-6]$/', $tag ) ) {
-				continue;
-			}
-
-			$heading_id = $processor->get_attribute( 'id' );
-			if ( is_string( $heading_id ) && trim( $heading_id ) === $id && $processor->set_bookmark( 'wp-toc' ) ) {
-				return $processor->get_bookmark_offsets( 'wp-toc' )['start'] ?? null;
-			}
-		}
-
-		return null;
+		return self::walk_top_level(
+			$html,
+			static fn( WP_HTML_Tag_Processor $processor, string $tag, bool $closer, array $stack ): bool => ! $closer
+				&& (bool) preg_match( '/^H[1-6]$/', $tag )
+				&& ! in_array( 'TEMPLATE', $stack, true )
+				&& is_string( $processor->get_attribute( 'id' ) )
+				&& trim( (string) $processor->get_attribute( 'id' ) ) === $id,
+			'start'
+		);
 	}
 
 	/**
-	 * Byte offset just after the first closing </p> outside a <template>.
+	 * Byte offset just after the first top-level paragraph.
 	 *
 	 * @param string $html HTML.
 	 * @return int|null
 	 */
 	private static function first_paragraph_end( string $html ): ?int {
-		$processor      = new WP_TOC_HTML_Processor( $html );
-		$template_depth = 0;
+		return self::walk_top_level(
+			$html,
+			static fn( WP_HTML_Tag_Processor $processor, string $tag, bool $closer, array $stack ): bool => $closer && 'P' === $tag && array() === $stack,
+			'end'
+		);
+	}
+
+	/**
+	 * Walks the tags while tracking which elements are open, and returns an
+	 * insertion offset for the first tag that matches.
+	 *
+	 * For "start", the offset is the start of the top-level element the
+	 * matching tag is in (or of the tag itself, when it is top-level). For
+	 * "end", it is the end of the matching tag. Elements left open by sloppy
+	 * HTML only move the TOC earlier, to a top-level boundary, never inside an
+	 * element. A <p> is closed by the block elements that implicitly close it.
+	 *
+	 * @param string   $html  HTML.
+	 * @param callable $is_target fn( processor, tag, is_closer, open_stack_after_closer ): bool.
+	 * @param string   $edge  'start' or 'end'.
+	 * @return int|null
+	 */
+	private static function walk_top_level( string $html, callable $is_target, string $edge ): ?int {
+		$processor = new WP_TOC_HTML_Processor( $html );
+		$stack     = array();
+		$top_start = null;
 
 		while ( $processor->next_tag( array( 'tag_closers' => 'visit' ) ) ) {
-			$tag = (string) $processor->get_tag();
+			$tag    = (string) $processor->get_tag();
+			$closer = $processor->is_tag_closer();
 
-			if ( 'TEMPLATE' === $tag ) {
-				$template_depth = max( 0, $template_depth + ( $processor->is_tag_closer() ? -1 : 1 ) );
+			if ( $closer ) {
+				$position = array_search( $tag, array_reverse( $stack, true ), true );
+				if ( false !== $position ) {
+					$stack = array_slice( $stack, 0, (int) $position );
+				}
+				if ( $is_target( $processor, $tag, true, $stack ) && $processor->set_bookmark( 'wp-toc' ) ) {
+					return $processor->get_bookmark_offsets( 'wp-toc' )[ $edge ] ?? null;
+				}
 				continue;
 			}
 
-			if ( 0 === $template_depth && 'P' === $tag && $processor->is_tag_closer() && $processor->set_bookmark( 'wp-toc' ) ) {
-				return $processor->get_bookmark_offsets( 'wp-toc' )['end'] ?? null;
+			// Block-level openers implicitly close an open <p>.
+			if ( 'P' === end( $stack ) && preg_match( '/^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|DETAILS|DIV|DL|FIELDSET|FIGCAPTION|FIGURE|FOOTER|FORM|H[1-6]|HEADER|HR|MAIN|MENU|NAV|OL|P|PRE|SECTION|TABLE|UL)$/', $tag ) ) {
+				array_pop( $stack );
+			}
+
+			if ( array() === $stack && $processor->set_bookmark( 'wp-toc-top' ) ) {
+				$top_start = $processor->get_bookmark_offsets( 'wp-toc-top' )['start'] ?? null;
+			}
+
+			if ( $is_target( $processor, $tag, false, $stack ) ) {
+				if ( 'start' === $edge ) {
+					return $top_start;
+				}
+				return $processor->set_bookmark( 'wp-toc' ) ? ( $processor->get_bookmark_offsets( 'wp-toc' )['end'] ?? null ) : null;
+			}
+
+			if ( ! self::is_empty_element( $processor, $tag ) ) {
+				$stack[] = $tag;
 			}
 		}
 
@@ -723,6 +862,7 @@ final class WP_TOC {
 		$headings       = array();
 		$current        = null;
 		$template_depth = 0;
+		$skip_stack     = array(); // Open elements inside a heading whose text is not part of its label.
 
 		// Pass 1: read every heading's text and record every existing id.
 		$processor = new WP_HTML_Tag_Processor( $html );
@@ -730,7 +870,7 @@ final class WP_TOC {
 			$type = $processor->get_token_type();
 
 			if ( '#text' === $type ) {
-				if ( null !== $current ) {
+				if ( null !== $current && array() === $skip_stack ) {
 					$current['text'] .= $processor->get_modifiable_text();
 				}
 				continue;
@@ -749,15 +889,22 @@ final class WP_TOC {
 			}
 
 			if ( $processor->is_tag_closer() ) {
+				if ( array() !== $skip_stack && end( $skip_stack ) === $tag ) {
+					array_pop( $skip_stack );
+				}
 				if ( $is_heading && null !== $current ) {
 					$headings[] = $current;
 					$current    = null;
+					$skip_stack = array();
 				}
 				continue;
 			}
 
 			$id = $processor->get_attribute( 'id' );
 			$id = is_string( $id ) ? trim( $id ) : '';
+
+			// An id already used earlier in the content can't be linked to; the heading gets a new one.
+			$duplicate_id = '' !== $id && 0 === $template_depth && isset( $ids[ $id ] );
 			if ( '' !== $id && 0 === $template_depth ) {
 				$ids[ $id ] = true;
 			}
@@ -767,13 +914,32 @@ final class WP_TOC {
 					// The previous heading was never closed.
 					$headings[] = $current;
 				}
-				$current = array(
+				$skip_stack = array();
+				$current    = array(
 					'level'   => (int) $m[1],
-					'id'      => $id,
+					'id'      => $duplicate_id ? '' : $id,
 					'text'    => '',
-					'exclude' => $template_depth > 0 || true === $processor->has_class( 'no-toc' ) || null !== $processor->get_attribute( 'data-no-toc' ),
+					'exclude' => $template_depth > 0
+						|| true === $processor->has_class( 'no-toc' )
+						|| true === $processor->has_class( 'screen-reader-text' )
+						|| null !== $processor->get_attribute( 'data-no-toc' ),
 					'new'     => false,
 				);
+				continue;
+			}
+
+			// Inside a heading, leave out text readers don't see as part of it:
+			// footnote markers, screen-reader-only text and decorative (aria-hidden) parts.
+			if ( null !== $current && ! self::is_empty_element( $processor, $tag ) ) {
+				if ( array() !== $skip_stack ) {
+					$skip_stack[] = $tag;
+				} elseif (
+					( 'SUP' === $tag && null !== $processor->get_attribute( 'data-fn' ) )
+					|| true === $processor->has_class( 'screen-reader-text' )
+					|| 'true' === $processor->get_attribute( 'aria-hidden' )
+				) {
+					$skip_stack[] = $tag;
+				}
 			}
 		}
 		if ( null !== $current ) {
@@ -783,6 +949,7 @@ final class WP_TOC {
 		// Work out the entries and any ids that need adding.
 		$items  = array();
 		$needed = false;
+		$taken  = $ids + self::reserved_ids( (int) get_the_ID() );
 		foreach ( $headings as $i => $heading ) {
 			$text = trim( (string) preg_replace( '/\s+/u', ' ', $heading['text'] ) );
 
@@ -801,9 +968,10 @@ final class WP_TOC {
 				 */
 				$slug = (string) apply_filters( 'wp_toc_heading_id', self::slug( $text ), $text, $heading['level'] );
 
-				$headings[ $i ]['id']  = self::unique_id( $slug, $ids );
-				$headings[ $i ]['new'] = true;
-				$needed                = true;
+				$headings[ $i ]['id']         = self::unique_id( $slug, $taken );
+				$ids[ $headings[ $i ]['id'] ] = true;
+				$headings[ $i ]['new']        = true;
+				$needed                       = true;
 			}
 
 			$items[] = array(
@@ -837,11 +1005,28 @@ final class WP_TOC {
 	}
 
 	/**
+	 * Whether the current tag opens an element with no content or closer
+	 * (void, self-closing foreign element, or one the processor reads as one token).
+	 *
+	 * @param WP_HTML_Tag_Processor $processor Processor at a tag opener.
+	 * @param string                $tag       Upper-case tag name.
+	 * @return bool
+	 */
+	private static function is_empty_element( WP_HTML_Tag_Processor $processor, string $tag ): bool {
+		return in_array( $tag, self::VOID_ELEMENTS, true )
+			|| in_array( $tag, self::ATOMIC_ELEMENTS, true )
+			|| $processor->has_self_closing_flag();
+	}
+
+	/**
 	 * Builds an id from heading text.
 	 *
-	 * Sanitize_title() percent-encodes non-ASCII characters ("%d9%85"). A
-	 * literal "%" in an id is ambiguous in URLs, so the slug is decoded back
-	 * to readable Unicode, which HTML ids and URL fragments both support.
+	 * - Sanitize_title() percent-encodes non-ASCII characters ("%d9%85"). A
+	 *   literal "%" in an id is ambiguous in URLs, so the slug is decoded back
+	 *   to readable Unicode, which HTML ids and URL fragments both support.
+	 * - Only letters, marks, numbers, "-" and "_" are kept, so symbols and
+	 *   emoji don't end up in anchors ("🚀 Launch" → "launch").
+	 * - Slugs longer than MAX_ID_LENGTH are cut at the last word boundary.
 	 *
 	 * @param string $text Heading text.
 	 * @return string
@@ -849,7 +1034,42 @@ final class WP_TOC {
 	private static function slug( string $text ): string {
 		$slug    = sanitize_title( $text );
 		$decoded = rawurldecode( $slug );
-		return ( $decoded !== $slug && preg_match( '//u', $decoded ) ) ? $decoded : $slug;
+
+		if ( $decoded !== $slug && preg_match( '//u', $decoded ) ) {
+			$slug = (string) preg_replace( '/[^\p{L}\p{M}\p{N}_-]+/u', '', $decoded );
+			$slug = trim( (string) preg_replace( '/-{2,}/', '-', $slug ), '-' );
+		}
+
+		if ( mb_strlen( $slug ) > self::MAX_ID_LENGTH ) {
+			$cut  = mb_substr( $slug, 0, self::MAX_ID_LENGTH + 1 );
+			$last = mb_strrpos( $cut, '-' );
+			$slug = rtrim( false !== $last && $last > 0 ? mb_substr( $cut, 0, $last ) : mb_substr( $slug, 0, self::MAX_ID_LENGTH ), '-' );
+		}
+
+		return $slug;
+	}
+
+	/**
+	 * Ids headings must not take: RESERVED_IDS plus the post's own "post-{ID}".
+	 *
+	 * @param int $post_id Current post ID.
+	 * @return array Ids as keys.
+	 */
+	private static function reserved_ids( int $post_id ): array {
+		$reserved = self::RESERVED_IDS;
+		if ( $post_id > 0 ) {
+			$reserved[] = 'post-' . $post_id; // Themes wrap posts in <article id="post-{ID}">.
+		}
+
+		/**
+		 * Filters the ids headings must not take (theme landmarks, skip-link targets).
+		 *
+		 * @param string[] $reserved Reserved ids.
+		 * @param int      $post_id  Current post ID.
+		 */
+		$reserved = (array) apply_filters( 'wp_toc_reserved_ids', $reserved, $post_id );
+
+		return array_fill_keys( array_map( 'strval', $reserved ), true );
 	}
 
 	/**
@@ -975,7 +1195,7 @@ final class WP_TOC {
 		++self::$toc_count;
 
 		$classes   = 'wp-toc auto-toc-container' . ( $atts['collapsible'] ? ' wp-toc--collapsible' : '' );
-		$permalink = $post_id > 0 ? (string) get_permalink( $post_id ) : '';
+		$permalink = self::page_url( $post_id );
 		$list      = self::render_list( $tree, true, $permalink );
 
 		// schema.org microdata: the TOC is a SiteNavigationElement (as in Rank Math's TOC block),
@@ -1072,8 +1292,8 @@ final class WP_TOC {
 	 * @return string
 	 */
 	public static function render_schema( array $tree, int $post_id ): string {
-		$permalink = $post_id ? get_permalink( $post_id ) : false;
-		if ( ! $permalink || ! $tree ) {
+		$permalink = self::page_url( $post_id );
+		if ( '' === $permalink || ! $tree ) {
 			return '';
 		}
 
@@ -1084,6 +1304,13 @@ final class WP_TOC {
 			'url'      => $permalink,
 			'hasPart'  => self::schema_parts( $tree, $permalink ),
 		);
+
+		// The node merges into Yoast SEO's or Rank Math's WebPage, which already has a
+		// `url` (the canonical, which can differ from the permalink). Sending ours too
+		// would give the merged page two conflicting URLs.
+		if ( self::seo_plugin_active() ) {
+			unset( $data['url'] );
+		}
 
 		/**
 		 * Filters the TOC's JSON-LD. Return an empty value to output nothing.
@@ -1107,6 +1334,39 @@ final class WP_TOC {
 	}
 
 	/**
+	 * Whether Yoast SEO or Rank Math outputs the page's WebPage node.
+	 *
+	 * @return bool
+	 */
+	private static function seo_plugin_active(): bool {
+		return defined( 'WPSEO_VERSION' ) || defined( 'RANK_MATH_VERSION' );
+	}
+
+	/**
+	 * URL of the page being shown for a post: the permalink, or for page 2+ of
+	 * a post split with <!--nextpage-->, that page's URL. Section URLs must
+	 * point at the page that actually contains the heading. Empty when there
+	 * is no post.
+	 *
+	 * @param int $post_id Post ID.
+	 * @return string
+	 */
+	private static function page_url( int $post_id ): string {
+		$permalink = $post_id > 0 ? (string) get_permalink( $post_id ) : '';
+		$page      = (int) get_query_var( 'page' );
+
+		if ( '' === $permalink || $page < 2 || (int) get_queried_object_id() !== $post_id || ! function_exists( '_wp_link_page' ) ) {
+			return $permalink;
+		}
+
+		// _wp_link_page() builds the same paged link WordPress uses in wp_link_pages().
+		$processor = new WP_HTML_Tag_Processor( (string) _wp_link_page( $page ) );
+		$href      = $processor->next_tag( 'a' ) ? $processor->get_attribute( 'href' ) : null;
+
+		return is_string( $href ) && '' !== $href ? $href : $permalink;
+	}
+
+	/**
 	 * The @id to use for the WebPage node.
 	 *
 	 * @param string $permalink Post URL.
@@ -1120,8 +1380,8 @@ final class WP_TOC {
 			// Rank Math: canonical URL + "#webpage" (RankMath\Schema\Webpage).
 			$id = $rank_math_canonical . '#webpage';
 		} elseif ( defined( 'WPSEO_VERSION' ) ) {
-			// Yoast SEO: the page URL (Meta_Tags_Context::generate_main_schema_id()).
-			$id = $permalink;
+			// Yoast SEO: the post's permalink (Meta_Tags_Context::generate_main_schema_id()), also on page 2+.
+			$id = (string) get_permalink( $post_id );
 		} else {
 			$id = $permalink . '#webpage';
 		}

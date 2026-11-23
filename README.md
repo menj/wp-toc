@@ -27,7 +27,9 @@ When a post or page is shown, WP TOC:
 1. **Reads the headings** in the finished post (`<h2>`, `<h3>`, and so on),
    including headings created by blocks and other plugins.
 2. **Gives each heading an anchor** (an `id` such as `#installation`), so it
-   can be linked to. Headings that already have one keep it.
+   can be linked to. Headings that already have one keep it. Anchors are short,
+   readable in any language, and never clash with ids the theme uses (such as
+   the "Skip to content" target `#content` or `#comments`).
 3. **Inserts a table of contents** just before the first heading, when the
    post has at least 3 headings. Shorter posts are left as they are.
 4. **Adds schema.org data** describing the table of contents and each section
@@ -117,6 +119,13 @@ The 1.0 shortcode `[auto_toc]` still works.
 
 The same attributes go in `atts` for the automatic table of contents.
 
+### Keeping links to a section stable
+
+Anchors are made from the heading text, so rewording a heading changes its
+anchor and old links to it stop working. For sections people link to, set the
+anchor yourself: in the block editor, **Advanced → HTML anchor**. WP TOC always
+keeps an anchor you set.
+
 ### Leaving a heading out
 
 Give the heading the class `no-toc`, or a `data-no-toc` attribute. In the block
@@ -173,11 +182,24 @@ your SEO plugin uses:
 Headings inside the post get anchors but no schema.org attributes: they sit
 outside any schema.org scope, so attributes there would mean nothing.
 
-## Rank Math
+## Works alongside Yoast SEO and Rank Math
+
+WP TOC adds to what your SEO plugin outputs and never contradicts it:
+
+- **Schema:** its data attaches to the SEO plugin's page node and only adds the
+  list of sections. The page's URL, name and everything else stay the SEO
+  plugin's, even with a custom canonical.
+- **No duplicate tables of contents:** if a post already has Rank Math's or
+  Yoast's TOC block (or one from another TOC tool), no automatic one is added.
+- **Clean descriptions:** the table of contents never ends up in excerpts or
+  auto-generated meta descriptions.
+- **Multi-page posts:** on page 2 and later of a post split with
+  `<!--nextpage-->`, section links point at that page, matching its canonical.
+
+### Rank Math details
 
 Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49:
 
-- The schema.org data attaches to Rank Math's page data, as above.
 - The table of contents never leaks into Rank Math's auto-generated descriptions.
 - Headings that already have anchors (for example from Rank Math's TOC block) keep them.
 - Rank Math's **Table of Contents** analysis check recognises WP TOC **when it is
@@ -193,6 +215,8 @@ Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49:
 | `wp_toc_default_atts` | Default attributes for every table of contents. |
 | `wp_toc_items` | Add, remove or rename entries before they are nested. |
 | `wp_toc_heading_id` | Change how heading anchors are generated. |
+| `wp_toc_reserved_ids` | Add ids your theme uses, so headings never take them. |
+| `wp_toc_other_toc_markers` | Add class names of other TOC tools, so no second TOC is added. |
 | `wp_toc_html` | Change the final markup. |
 | `wp_toc_schema` | Change the JSON-LD. |
 | `wp_toc_schema_webpage_id` | Set the page identifier the schema.org data attaches to. |

@@ -25,7 +25,7 @@ abstract class WP_TOC_TestCase extends TestCase {
 	 * Removes filters a test added.
 	 */
 	protected function tearDown(): void {
-		foreach ( array( 'wp_toc_enabled', 'wp_toc_items', 'wp_toc_html', 'wp_toc_schema', 'wp_toc_schema_webpage_id', 'wp_toc_heading_id', 'wp_toc_load_css', 'wp_toc_default_atts', 'wp_toc_auto_insert', 'wp_toc_base_url' ) as $hook ) {
+		foreach ( array( 'wp_toc_enabled', 'wp_toc_items', 'wp_toc_html', 'wp_toc_schema', 'wp_toc_schema_webpage_id', 'wp_toc_heading_id', 'wp_toc_load_css', 'wp_toc_default_atts', 'wp_toc_auto_insert', 'wp_toc_base_url', 'wp_toc_reserved_ids', 'wp_toc_other_toc_markers' ) as $hook ) {
 			remove_all_filters( $hook );
 		}
 		parent::tearDown();

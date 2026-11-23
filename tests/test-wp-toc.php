@@ -516,6 +516,7 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 	 * Puts the test in the main loop of a singular view of post 42.
 	 */
 	private function view_post( int $post_id = 42 ): void {
+		$GLOBALS['wp_toc_test']['post_id']    = $post_id;
 		$GLOBALS['wp_toc_test']['singular']   = true;
 		$GLOBALS['wp_toc_test']['in_loop']    = true;
 		$GLOBALS['wp_toc_test']['main_query'] = true;
@@ -612,6 +613,196 @@ class Test_WP_TOC extends WP_TOC_TestCase {
 			'another post'       => array( 'queried_id', 7 ),
 			'password protected' => array( 'password', true ),
 		);
+	}
+
+	// ---------------------------------------------------------------------
+	// SEO: anchors (slugs).
+	// ---------------------------------------------------------------------
+
+	public function test_headings_never_take_theme_or_core_ids() {
+		$out = $this->render( '[wp_toc]<h2>Content</h2><h2>Main</h2><h2>Comments</h2><h2>Respond</h2><h2>Post 42</h2>' );
+		foreach ( array( 'content', 'main', 'comments', 'respond', 'post-42' ) as $id ) {
+			$this->assertStringNotContainsString( 'id="' . $id . '"', $out, "#$id belongs to the theme" );
+		}
+		$this->assertStringContainsString( '<h2 id="content-2">Content</h2>', $out );
+		$this->assertStringContainsString( '<h2 id="post-42-2">Post 42</h2>', $out, 'The post\'s own <article id="post-42"> is reserved' );
+
+		add_filter( 'wp_toc_reserved_ids', static fn( array $ids ): array => array_merge( $ids, array( 'intro' ) ) );
+		$this->assertStringContainsString( '<h2 id="intro-2">Intro</h2>', $this->render( '[wp_toc]<h2>Intro</h2>' ) );
+	}
+
+	public function test_existing_reserved_id_on_a_heading_is_kept() {
+		// An author's explicit anchor is never changed.
+		$this->assertStringContainsString( '<h2 id="comments">Comments</h2>', $this->render( '[wp_toc]<h2 id="comments">Comments</h2>' ) );
+	}
+
+	public function test_hidden_text_is_left_out_of_labels_and_anchors() {
+		$out = $this->render(
+			'[wp_toc]'
+			. '<h2>Results<sup data-fn="f1" class="fn"><a href="#f1" id="f1-link">1</a></sup></h2>'
+			. '<h2>Pricing <span class="screen-reader-text">(opens in <b>new</b> tab)</span> plans</h2>'
+			. '<h2><span aria-hidden="true"><span>★</span></span>Reviews</h2>'
+			. '<h2>Squared x<sup>2</sup></h2>'
+		);
+		$this->assertSame( array( 'Results' => array(), 'Pricing plans' => array(), 'Reviews' => array(), 'Squared x2' => array() ), $this->toc_structure( $out ) );
+		$this->assertStringContainsString( '<h2 id="results">', $out );
+		$this->assertStringContainsString( '<h2 id="pricing-plans">', $out );
+		$this->assertStringContainsString( '<h2 id="reviews">', $out );
+	}
+
+	public function test_screen_reader_only_headings_are_skipped() {
+		$out = $this->render( '[wp_toc]<h2 class="screen-reader-text">Hidden</h2><h2>Shown</h2>' );
+		$this->assertSame( array( 'Shown' => array() ), $this->toc_structure( $out ) );
+	}
+
+	public function test_duplicate_author_ids_get_a_reachable_anchor() {
+		$out = $this->render( '[wp_toc]<p id="faq">Intro</p><h2 id="faq">FAQ</h2><h2 id="x">One</h2><h2 id="x">Two</h2>' );
+		$this->assertStringContainsString( '<h2 id="faq-2">FAQ</h2>', $out );
+		$this->assertStringContainsString( '<h2 id="x">One</h2>', $out, 'The first use keeps its id' );
+		$this->assertStringContainsString( '<h2 id="two">Two</h2>', $out );
+		$this->assertSame( 3, preg_match_all( '/href="#(faq-2|x|two)"/', $out ) );
+	}
+
+	public function test_long_anchors_are_cut_at_a_word_boundary() {
+		$out = $this->render( '[wp_toc]<h2>' . str_repeat( 'Understanding the long-term implications ', 5 ) . '</h2>' );
+		preg_match( '/<h2 id="([^"]+)"/', $out, $m );
+		$this->assertLessThanOrEqual( 72, mb_strlen( $m[1] ) );
+		$this->assertStringEndsNotWith( '-', $m[1] );
+		$this->assertMatchesRegularExpression( '/^understanding-the-long-term-implications-understanding-[a-z-]*[a-z]$/', $m[1] );
+		$this->assertContains( substr( $m[1], strrpos( $m[1], '-' ) + 1 ), array( 'understanding', 'the', 'long', 'term', 'implications' ), 'Cut between words' );
+	}
+
+	public function test_symbols_and_emoji_are_left_out_of_anchors() {
+		$out = $this->render( '[wp_toc]<h2>🚀 Launch</h2><h2>Price → €5</h2><h2>Ünïcödé ✓ ok</h2>' );
+		$this->assertStringContainsString( '<h2 id="launch">', $out );
+		$this->assertStringContainsString( '<h2 id="price-e5">', $out, 'WordPress transliterates € to e' );
+		$this->assertStringContainsString( '<h2 id="unicode-ok">', $out );
+		$this->assertStringContainsString( '<span itemprop="name">🚀 Launch</span>', $out, 'Labels keep them' );
+	}
+
+	// ---------------------------------------------------------------------
+	// Automatic TOC: placement and coexistence.
+	// ---------------------------------------------------------------------
+
+	public function test_auto_toc_is_never_inserted_inside_another_element() {
+		$this->view_post();
+		$out = $this->the_content( "<p>Intro</p>\n\n<details><summary><h2>Question</h2></summary><p>Answer</p></details>\n\n<h2>Two</h2>\n\n<h2>Three</h2>" );
+		$this->assertMatchesRegularExpression( '#<p>Intro</p>\s*<nav .*?</nav><script[^>]*>.*?</script><details>\s*<summary>\s*<h2 id="question">#s', $out );
+
+		$out = $this->the_content( "<table><tr><td><h2>In a cell</h2></td></tr></table>\n\n<h2>Two</h2>\n\n<h2>Three</h2>" );
+		$this->assertStringStartsWith( '<nav ', $out );
+	}
+
+	public function test_auto_toc_handles_unclosed_paragraphs() {
+		$this->view_post();
+		$out = WP_TOC::filter_content( '<p>Intro<p>More<h2>One</h2><h2>Two</h2><h2>Three</h2>' );
+		$this->assertMatchesRegularExpression( '#^<p>Intro<p>More<nav .*?</script><h2 id="one">#s', $out );
+	}
+
+	public function test_after_first_paragraph_uses_a_top_level_paragraph() {
+		$this->view_post();
+		add_filter( 'wp_toc_auto_insert', static fn( array $s ): array => array( 'position' => 'after_first_paragraph' ) + $s );
+		$out = WP_TOC::filter_content( '<blockquote><p>Quote</p></blockquote><p>Intro</p><h2>One</h2><h2>Two</h2><h2>Three</h2>' );
+		$this->assertStringStartsWith( '<blockquote><p>Quote</p></blockquote><p>Intro</p><nav ', $out );
+	}
+
+	public function test_no_auto_toc_in_excerpts() {
+		$this->view_post();
+		add_filter( 'get_the_excerpt', fn(): string => wp_strip_all_tags( $this->the_content( self::LONG_POST ) ) );
+		$excerpt = apply_filters( 'get_the_excerpt', '' );
+		remove_all_filters( 'get_the_excerpt' );
+
+		$this->assertStringNotContainsString( 'Table of Contents', $excerpt );
+		$this->assertStringContainsString( '<nav', $this->the_content( self::LONG_POST ), 'The post itself still gets one' );
+	}
+
+	/**
+	 * @dataProvider provide_other_tocs
+	 */
+	public function test_no_auto_toc_when_another_toc_is_present( string $markup ) {
+		$this->view_post();
+		$out = $this->the_content( $markup . "\n\n" . self::LONG_POST );
+		$this->assertStringNotContainsString( 'wp-toc', $out );
+	}
+
+	public static function provide_other_tocs(): array {
+		return array(
+			'Rank Math TOC block' => array( '<div class="wp-block-rank-math-toc-block" id="rank-math-toc"><nav><ul><li><a href="#one">One</a></li></ul></nav></div>' ),
+			'Yoast SEO TOC block' => array( '<div class="schema-faq yoast-table-of-contents"><ul><li><a href="#one">One</a></li></ul></div>' ),
+			'Core TOC block'      => array( '<nav class="wp-block-table-of-contents"><ol><li><a href="#one">One</a></li></ol></nav>' ),
+			'Easy TOC'            => array( '<div id="ez-toc-container" class="ez-toc-container"></div>' ),
+		);
+	}
+
+	public function test_other_toc_markers_are_filterable() {
+		$this->view_post();
+		add_filter( 'wp_toc_other_toc_markers', static fn( array $m ): array => array_merge( $m, array( 'my-theme-toc' ) ) );
+		$this->assertStringNotContainsString( 'wp-toc', $this->the_content( '<div class="my-theme-toc"></div>' . self::LONG_POST ) );
+	}
+
+	public function test_manual_shortcode_still_works_next_to_another_toc() {
+		$out = $this->render( '<div class="wp-block-rank-math-toc-block"></div>[wp_toc]<h2>A</h2>' );
+		$this->assertStringContainsString( '<nav class="wp-toc', $out, 'Only the automatic TOC steps aside' );
+	}
+
+	// ---------------------------------------------------------------------
+	// SEO: schema URLs.
+	// ---------------------------------------------------------------------
+
+	public function test_section_urls_point_at_the_current_page_of_a_paged_post() {
+		$this->view_post();
+		$GLOBALS['wp_toc_test']['query_vars']['page'] = 2;
+
+		$out  = $this->render( '[wp_toc]<h2>On page two</h2>' );
+		$data = $this->json_ld( $out )[0];
+
+		$this->assertSame( 'https://example.com/post-42/2/#on-page-two', $data['hasPart'][0]['url'] );
+		$this->assertSame( 'https://example.com/post-42/2/#on-page-two', $data['hasPart'][0]['@id'] );
+		$this->assertSame( 'https://example.com/post-42/2/', $data['url'] );
+		$this->assertStringContainsString( 'itemid="https://example.com/post-42/2/#on-page-two"', $out );
+	}
+
+	public function test_page_one_and_other_posts_use_the_permalink() {
+		$this->view_post();
+		$GLOBALS['wp_toc_test']['query_vars']['page'] = 2;
+		$data = $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>', 7 ) )[0];
+		$this->assertSame( 'https://example.com/post-7/#a', $data['hasPart'][0]['url'], 'Not the post being viewed' );
+	}
+
+	public function test_json_ld_has_url_without_an_seo_plugin() {
+		$this->assertSame( 'https://example.com/post-42/', $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0]['url'] );
+	}
+
+	/**
+	 * Yoast's WebPage already has a url (its canonical); ours must not contradict it.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_json_ld_leaves_url_to_yoast_and_uses_its_base_permalink_id() {
+		define( 'WPSEO_VERSION', '99.0' );
+		$this->view_post();
+		$GLOBALS['wp_toc_test']['query_vars']['page'] = 2;
+
+		$data = $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0];
+		$this->assertArrayNotHasKey( 'url', $data );
+		$this->assertSame( 'https://example.com/post-42/', $data['@id'] );
+		$this->assertSame( 'https://example.com/post-42/2/#a', $data['hasPart'][0]['url'] );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_json_ld_leaves_url_to_rank_math() {
+		define( 'RANK_MATH_VERSION', '1.0.268' );
+		require_once __DIR__ . '/fixtures/rank-math-paper.php';
+		\RankMath\Paper\Paper::$canonical = 'https://example.com/custom-canonical/';
+		$this->view_post();
+
+		$data = $this->json_ld( $this->render( '[wp_toc]<h2>A</h2>' ) )[0];
+		$this->assertArrayNotHasKey( 'url', $data );
+		$this->assertSame( 'https://example.com/custom-canonical/#webpage', $data['@id'] );
 	}
 
 	// ---------------------------------------------------------------------
