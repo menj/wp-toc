@@ -20,7 +20,8 @@ A rewrite. Upgrade notes: [UPGRADING.md](UPGRADING.md#from-10x-to-110).
 - `[wp_toc]` shortcode for placing the table of contents by hand; `[auto_toc]` keeps working as an alias. A shortcode in a post replaces the automatic table of contents.
 - Attributes: `depth`, `min`, `collapsible` (native `<details>`), `collapsed`.
 - Skip a heading with the class `no-toc` or a `data-no-toc` attribute. Headings inside `<template>` are always skipped.
-- Readable anchors for non-Latin headings (`#مرحبا-بالعالم` instead of `#%d9%85…`).
+- **SEO-safe anchors.** Readable for non-Latin headings (`#مرحبا-بالعالم` instead of `#%d9%85…`), without symbols or emoji (`🚀 Launch` → `#launch`), at most 72 characters (cut between words), and never one of the ids WordPress and themes use for landmarks and links (`#content`, `#main`, `#comments`, `#respond`, `#post-{ID}` and more; `wp_toc_reserved_ids` filter).
+- **No second table of contents:** the automatic one is skipped when the post already has Rank Math's, Yoast SEO's, the core or another TOC tool's block (`wp_toc_other_toc_markers` filter).
 - Filters: `wp_toc_auto_insert`, `wp_toc_enabled`, `wp_toc_default_atts`, `wp_toc_items`, `wp_toc_heading_id`, `wp_toc_html`, `wp_toc_schema`, `wp_toc_schema_webpage_id`, `wp_toc_base_url`, `wp_toc_load_css`, `wp_toc_content_filter_priority`.
 - `wp-toc-*` CSS classes alongside the existing `auto-toc-*` ones.
 - `scroll-margin-top` on headings, so sticky headers don't cover them (`--wp-toc-scroll-offset`).
@@ -38,6 +39,11 @@ A rewrite. Upgrade notes: [UPGRADING.md](UPGRADING.md#from-10x-to-110).
 - Heading text with line breaks or extra spaces produced messy labels; whitespace is now collapsed.
 - The `tags` attribute accepted any value. Only `h1`–`h6` are accepted now.
 - Entries added through `wp_toc_items` without an `id` or `text` are skipped instead of rendering empty links.
+- Footnote markers, screen-reader-only text and `aria-hidden` parts of a heading no longer end up in its label and anchor ("Results1" → "Results"). Headings with the class `screen-reader-text` are skipped.
+- A heading whose `id` is already used earlier in the post gets a new one, so its TOC link works.
+- The automatic table of contents is never inserted inside another element (an accordion's `<summary>`, a table cell), and never ends up in excerpts.
+- On page 2+ of a post split with `<!--nextpage-->`, schema.org section URLs pointed at page 1. They now use the current page's URL.
+- With Yoast SEO or Rank Math active, the JSON-LD no longer sends its own `url`, which could contradict the SEO plugin's canonical.
 
 ### Changed
 - **Requires PHP 8.4 or later**, strictly: on older PHP, WP TOC does not load and shows administrators a notice. The code uses `strict_types` and PHP 8.3/8.4 features.

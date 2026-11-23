@@ -90,8 +90,22 @@ Change them with the `wp_toc_auto_insert` filter.
 
 It is added only to the **main post of a singular front-end view**: not on
 archives, feeds or admin screens, not to other posts shown on the page (e.g.
-related posts), not outside the main loop, and not to password-protected posts
-until they are unlocked.
+related posts), not outside the main loop, not to password-protected posts
+until they are unlocked, and **not to excerpts** (an excerpt built from the
+content would otherwise start with the TOC's text, and SEO and sharing tools
+reuse excerpts as descriptions).
+
+**Never two tables of contents:** when the post already contains another TOC,
+no automatic one is added. Detected by class: Rank Math's TOC block
+(`wp-block-rank-math-toc-block`), Yoast SEO's (`yoast-table-of-contents`), the
+core block (`wp-block-table-of-contents`), Easy Table of Contents, LuckyWP,
+Table of Contents Plus, Kadence, Spectra, Ultimate Blocks and SimpleTOC. Add
+more with `wp_toc_other_toc_markers`. A `[wp_toc]` typed by hand is still shown.
+
+**Placement:** the TOC is inserted before the top-level element that contains
+the first heading, never inside another element (an accordion's `<summary>`, a
+table cell, a link), where it would be hidden or make invalid HTML.
+`after_first_paragraph` uses the first top-level paragraph.
 
 A `[wp_toc]` (or `[auto_toc]`) shortcode in a post places the TOC by hand and
 replaces the automatic one for that post.
@@ -116,22 +130,58 @@ There is no attribute to turn schema.org output off; see [Schema.org](#schemaorg
 
 ## Heading rules
 
+These decide the anchors (`id`s) that TOC links, schema.org URLs and search
+engines' "Jump to" links point at.
+
 - Headings are read from the final rendered content, after all blocks and shortcodes.
-- An existing `id` on a heading is kept and used as its anchor.
-- A missing `id` is generated with `sanitize_title()` from the heading text,
-  then made unique against **every** `id` in the content (not just headings),
-  by adding `-2`, `-3` and so on. An empty slug becomes `section`.
-  Non-Latin characters stay readable: `<h2>مرحبا بالعالم</h2>` gets
-  `id="مرحبا-بالعالم"`, not the percent-encoded form `sanitize_title()` returns.
-- Heading text is the heading's text content with whitespace collapsed.
-- Headings with the class `no-toc` or a `data-no-toc` attribute are skipped.
-- Headings inside `<template>` are skipped, since template content is never displayed.
-- Empty headings are skipped.
+- **An author's `id` is kept**, so links to it keep working. Exception: when the
+  same `id` is already used earlier in the content, the browser can never reach
+  the second one, so that heading gets a new `id`.
+- **A missing `id` is generated** from the heading text with `sanitize_title()`:
+  - Non-Latin letters stay readable: `<h2>مرحبا بالعالم</h2>` → `id="مرحبا-بالعالم"`,
+    not the percent-encoded form `sanitize_title()` returns.
+  - Only letters, marks, numbers, `-` and `_` are kept, so symbols and emoji
+    stay out of anchors: `🚀 Launch` → `launch`. (WordPress transliterates some
+    symbols first, e.g. `€` → `e`.)
+  - At most 72 characters, cut at the last word boundary.
+  - Unique against **every** `id` in the content, and against the
+    [reserved ids](#reserved-ids), by adding `-2`, `-3` and so on. An empty
+    slug becomes `section`.
+- **Heading text** (the TOC label and the source of the anchor) is what readers
+  see: whitespace is collapsed, and footnote markers (`<sup data-fn>`),
+  screen-reader-only text (`.screen-reader-text`) and decorative parts
+  (`aria-hidden="true"`) are left out.
+- **Skipped headings:** class `no-toc`, attribute `data-no-toc`, class
+  `screen-reader-text`, inside `<template>`, or empty.
 - Nesting: each entry becomes a child of the closest earlier entry with a
   lower level. Skipped levels (h2 → h4) nest one step; a first heading deeper
   than later ones stays at the top level.
 - Nothing else in the content changes: only `id` attributes are added, and the
   TOC is inserted.
+
+### Reserved ids
+
+Generated anchors never take ids that WordPress and themes use for landmarks
+and links, or theme links would jump to the heading instead (e.g. "Skip to
+content" → `#content`, comment links → `#comments`, `#respond`):
+
+`content`, `main`, `primary`, `secondary`, `page`, `site`, `top`, `masthead`,
+`colophon`, `header`, `footer`, `site-header`, `site-footer`, `site-content`,
+`main-content`, `content-area`, `site-navigation`, `navigation`,
+`primary-menu`, `menu`, `nav`, `sidebar`, `search`, `searchform`,
+`breadcrumbs`, `comments`, `respond`, `reply-title`, `commentform`, `comment`,
+`cancel-comment-reply-link`, `wpadminbar`, `more`, and the post's own
+`post-{ID}` (themes wrap posts in `<article id="post-{ID}">`).
+
+A heading titled "Comments" gets `#comments-2`. Add a theme's own ids with
+the `wp_toc_reserved_ids` filter. An `id` an author typed is never changed.
+
+### Stable links
+
+Generated anchors follow the heading text and order: editing a heading, or
+adding an earlier heading with the same text, changes them, and links to the
+old anchor stop working. For sections people link to, give the heading its own
+anchor (block editor: **Advanced → HTML anchor**); WP TOC always keeps it.
 
 ## Markup
 
@@ -194,13 +244,19 @@ JSON-LD, one block per post after its first TOC:
 
 - A `WebPage` node with `url` = permalink and `hasPart` listing each section as
   a `WebPageElement` (`@id`, `name`, `url`), nested to match the TOC.
-- Section `@id` and `url` = permalink + `#` + percent-encoded heading id. The
+- Section `@id` and `url` = page URL + `#` + percent-encoded heading id. The
   microdata `itemid` of each entry is the same value, so the two descriptions merge.
+- **Page URL:** the permalink; on page 2+ of a post split with `<!--nextpage-->`,
+  that page's URL (built by WordPress's `_wp_link_page()`), since the heading
+  only exists there.
+- **`url` is left out when Yoast SEO or Rank Math is active.** The node merges
+  into their WebPage, which already has a `url` (its canonical, which can
+  differ from the permalink); sending a second one would contradict it.
 - WebPage `@id`, chosen to match the SEO plugin's WebPage node so search engines merge them:
   - Rank Math active (`RANK_MATH_VERSION`) and the post is the page being viewed:
     Rank Math's canonical URL + `#webpage` (`RankMath\Paper\Paper::get()->get_canonical()`),
     which also covers a custom canonical. Falls back to the next rule if that call fails.
-  - Yoast SEO active (`WPSEO_VERSION`): the permalink.
+  - Yoast SEO active (`WPSEO_VERSION`): the post's permalink, also on page 2+.
   - Otherwise: permalink + `#webpage`.
 - Encoded with `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP`.
 - No permalink (no current post) means no JSON-LD.
@@ -219,6 +275,18 @@ not change the content beyond heading ids.
 - Custom properties: `--wp-toc-bg`, `--wp-toc-border`, `--wp-toc-indent`,
   `--wp-toc-scroll-offset` (default `2rem`, used for `scroll-margin-top` on headings with an id).
 
+## Working alongside SEO plugins
+
+WP TOC adds to what Yoast SEO and Rank Math output; it never replaces or
+contradicts it:
+
+- Its JSON-LD attaches to their WebPage node by `@id` and only adds `hasPart`
+  (plus `@type: WebPage`, which every page type they use is a kind of); it
+  leaves `url`, name and everything else to them.
+- It skips the automatic TOC when their TOC block is in the post.
+- It never adds TOC text to excerpts or descriptions.
+- It never takes ids their or the theme's links use.
+
 ## Rank Math compatibility
 
 Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49.
@@ -227,8 +295,9 @@ Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49.
   `rank_math/researches/toc_plugins`, so Rank Math's "Table of Contents" check
   passes. Rank Math checks this list against active plugins, so theme code
   can't be recognized.
-- **Schema:** see the `@id` rules above. Rank Math's own TOC block outputs its own
-  `SiteNavigationElement`; both can be used on the same page.
+- **Schema:** see the `@id` and `url` rules above.
+- **Rank Math's TOC block:** when it is in a post, no automatic TOC is added, so
+  there are never two. A `[wp_toc]` typed next to it is still shown.
 - **Descriptions:** with Rank Math's `rank_math/paper/auto_generated_description/apply_shortcode`
   filter on, Rank Math runs shortcodes outside `the_content`. `[wp_toc]` then outputs only
   its HTML-comment placeholder, which Rank Math strips, so no TOC text leaks into descriptions.
@@ -247,6 +316,8 @@ Checked against Rank Math 1.0.268 and Rank Math Pro 3.0.49.
 | `shortcode_atts_wp_toc` | filter | core `shortcode_atts` arguments | Core filter, for both shortcode tags. |
 | `wp_toc_items` | filter | `array $items, int $post_id` | Flat list of `array( 'level', 'id', 'text' )` before nesting. Entries without an id or text are skipped. |
 | `wp_toc_heading_id` | filter | `string $slug, string $text, int $level` | Generated id, before it is made unique. |
+| `wp_toc_reserved_ids` | filter | `string[] $reserved, int $post_id` | Ids headings must not take (see [Reserved ids](#reserved-ids)). |
+| `wp_toc_other_toc_markers` | filter | `string[] $markers` | Class names of other TOC tools; when one is in the post, no automatic TOC is added. |
 | `wp_toc_html` | filter | `string $html, array $tree, array $atts, int $post_id` | Final TOC markup. |
 | `wp_toc_schema` | filter | `array $data, array $tree, int $post_id` | Change the JSON-LD data. |
 | `wp_toc_schema_webpage_id` | filter | `string $id, string $permalink, int $post_id` | `@id` of the WebPage node. |

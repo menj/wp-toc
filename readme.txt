@@ -71,7 +71,7 @@ No. There is no rich result for a table of contents. Google's "Jump to" links co
 
 = Does it work with Rank Math? =
 
-Yes. The schema.org data attaches to Rank Math's page data using Rank Math's canonical URL, the table of contents never appears in Rank Math's auto-generated descriptions, and Rank Math's "Table of Contents" analysis check recognizes WP TOC when it is installed as a plugin.
+Yes. The schema.org data attaches to Rank Math's page data using Rank Math's canonical URL, the table of contents never appears in Rank Math's auto-generated descriptions, no second table of contents is added next to Rank Math's TOC block, and Rank Math's "Table of Contents" analysis check recognizes WP TOC when it is installed as a plugin.
 
 = Can I use my own styles? =
 
@@ -79,7 +79,11 @@ Yes. Override the custom properties `--wp-toc-bg`, `--wp-toc-border`, `--wp-toc-
 
 = Will my existing heading links break? =
 
-No. Headings that already have an `id` keep it.
+No. Headings that already have an `id` keep it. For new sections people will link to, set the anchor yourself (block editor: Advanced → HTML anchor), since generated anchors change when a heading is reworded.
+
+= Does it work with Yoast SEO? =
+
+Yes. The schema.org data attaches to Yoast's page data without changing it, and if a post uses Yoast's table-of-contents block, no second table of contents is added.
 
 == Changelog ==
 
@@ -91,7 +95,8 @@ No. Headings that already have an `id` keep it.
 * Fixed: the table of contents never appeared because the shortcode ran before the headings were read.
 * Fixed: broken list markup with nested, skipped or out-of-order heading levels.
 * Fixed: posts were re-serialized, which altered markup; now only heading ids are added.
-* Fixed: existing heading ids were overwritten, and generated ids could clash with other ids.
+* Fixed: existing heading ids were overwritten, and generated ids could clash with other ids or with the theme's (#content, #comments).
+* Added: SEO-safe anchors (readable, no emoji, at most 72 characters), no duplicate TOC next to Rank Math's or Yoast's TOC block, correct section URLs on multi-page posts.
 * Changed: requires PHP 8.4 and WordPress 6.7. Accessible `<nav>` markup; the stylesheet only loads where needed. Renamed to WP TOC; licensed GPLv3 or later.
 
 = 1.0.0 =

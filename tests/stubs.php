@@ -19,6 +19,7 @@ function wp_toc_test_reset() {
 		'is_admin'   => false,
 		'queried_id' => 0,
 		'in_loop'    => false,
+		'query_vars' => array(),
 		'main_query' => true,
 		'is_feed'    => false,
 		'post_types' => array(),
@@ -64,6 +65,8 @@ function wp_allowed_protocols() {
 function wp_json_encode( $value, $flags = 0, $depth = 512 ) { return json_encode( $value, $flags, $depth ); }
 function is_admin() { return ! empty( $GLOBALS['wp_toc_test']['is_admin'] ); }
 function get_queried_object_id() { return $GLOBALS['wp_toc_test']['queried_id']; }
+function get_query_var( $query_var, $default_value = '' ) { return $GLOBALS['wp_toc_test']['query_vars'][ $query_var ] ?? $default_value; }
+function _wp_link_page( $i ) { return '<a href="' . get_permalink( get_the_ID() ) . $i . '/" class="post-page-numbers">'; }
 function in_the_loop() { return $GLOBALS['wp_toc_test']['in_loop']; }
 function is_main_query() { return $GLOBALS['wp_toc_test']['main_query']; }
 function is_feed( $feeds = '' ) { return $GLOBALS['wp_toc_test']['is_feed']; }
